@@ -1,138 +1,10 @@
 # app.py
 # -*- coding: utf-8 -*-
 
-import json
-import re
 from pathlib import Path
-
 import gradio as gr
+
 from run_review import run_review
-
-
-# =========================
-# Helpers
-# =========================
-def safe_text(x, default="-"):
-    if x is None:
-        return default
-    s = str(x).strip()
-    return s if s else default
-
-
-def fmt_score(x):
-    try:
-        return f"{float(x):.2f}"
-    except Exception:
-        return "-"
-
-
-def fmt_conf(x):
-    try:
-        return f"{float(x):.2f}"
-    except Exception:
-        return "-"
-
-
-def normalize_verdict(verdict: str) -> str:
-    v = safe_text(verdict, "UNKNOWN").upper()
-    if v not in {"SUPPORT", "HOLD", "REJECT"}:
-        return v
-    return v
-
-
-def verdict_class(verdict: str) -> str:
-    v = normalize_verdict(verdict)
-    if v == "SUPPORT":
-        return "verdict-support"
-    if v == "REJECT":
-        return "verdict-reject"
-    return "verdict-hold"
-
-
-def render_summary_card(review: dict) -> str:
-    proposal_id = safe_text(review.get("proposal_id"))
-    profiler_mode = safe_text(review.get("profiler_mode"))
-    overall_score = fmt_score(review.get("overall_score_10"))
-    confidence = fmt_conf(review.get("confidence"))
-    verdict = normalize_verdict(review.get("verdict"))
-
-    return f"""
-    <div class="summary-shell">
-        <div class="summary-grid">
-            <div class="summary-card verdict-card {verdict_class(verdict)}">
-                <div class="summary-label">Final Verdict</div>
-                <div class="summary-value verdict-value">{verdict}</div>
-                <div class="summary-sub">Structured review conclusion</div>
-            </div>
-
-            <div class="summary-card">
-                <div class="summary-label">Overall Score</div>
-                <div class="summary-value">{overall_score} / 10</div>
-                <div class="summary-sub">Overall expert evaluation score</div>
-            </div>
-
-            <div class="summary-card">
-                <div class="summary-label">Confidence</div>
-                <div class="summary-value">{confidence}</div>
-                <div class="summary-sub">Review confidence estimate</div>
-            </div>
-
-            <div class="summary-card">
-                <div class="summary-label">Proposal ID</div>
-                <div class="summary-value small-value">{proposal_id}</div>
-                <div class="summary-sub">Current review run identifier</div>
-            </div>
-        </div>
-
-        <div class="meta-row">
-            <div><span class="meta-key">Profiler mode:</span> {profiler_mode}</div>
-        </div>
-    </div>
-    """
-
-
-def render_dimension_cards(review: dict) -> str:
-    dims = review.get("dimension_scores", {}) or {}
-
-    order = [
-        ("team", "Team"),
-        ("objectives", "Objectives"),
-        ("strategy", "Strategy"),
-        ("innovation", "Innovation"),
-        ("feasibility", "Feasibility"),
-    ]
-
-    items = []
-    for key, label in order:
-        value = fmt_score(dims.get(key))
-        items.append(
-            f"""
-            <div class="dim-card">
-                <div class="dim-name">{label}</div>
-                <div class="dim-score">{value}</div>
-            </div>
-            """
-        )
-
-    return f"""
-    <div class="dim-shell">
-        <div class="panel-title">Dimension Scores</div>
-        <div class="dim-grid">
-            {''.join(items)}
-        </div>
-    </div>
-    """
-
-
-def render_empty_summary() -> str:
-    return """
-    <div class="placeholder-box">
-        <div class="placeholder-title">Review summary will appear here</div>
-        <div class="placeholder-text">
-            Upload a proposal PDF, then click <b>Start Review</b>.
-        </div>
-    </div>
-    """
 
 
 def extract_report_and_json(result: dict):
@@ -154,95 +26,11 @@ def extract_report_and_json(result: dict):
     return report_path, review_json_path
 
 
-def run_ui_review(file_obj, proposal_id):
-
-    if file_obj is None:
-        raise gr.Error("Please upload a PDF file first.")
-
-    # 🔥 STEP 1：立即显示运行状态
-    yield (
-        "⏳ **Yangtze AI is analyzing your proposal...**",
-        """
-        <div class="placeholder-box">
-            🔍 Parsing document structure...<br>
-            📊 Extracting key information...<br>
-            🤖 Running expert evaluation...
-        </div>
-        """,
-        """
-        <div class="placeholder-box">
-            Evaluating dimensions:<br>
-            • Team<br>
-            • Objectives<br>
-            • Strategy<br>
-            • Innovation<br>
-            • Feasibility
-        </div>
-        """,
-        "",
-        None,
-        None
-    )
-
-    file_path = Path(file_obj)
-    if file_path.suffix.lower() != ".pdf":
-        raise gr.Error("Only PDF files are supported.")
-
-    pid = proposal_id.strip() if proposal_id else None
-    if pid == "":
-        pid = None
-
-    result = run_review(file_path=file_path, proposal_id=pid, use_ocr=True)
-
-    report_path, review_json_path = extract_report_and_json(result)
-
-    review = json.loads(Path(review_json_path).read_text(encoding="utf-8"))
-
-    report_md = ""
-    if report_path and Path(report_path).exists():
-        report_md = Path(report_path).read_text(encoding="utf-8", errors="ignore")
-
-    status_md = f"""
-✅ **Review completed**
-
-- **Proposal:** `{review.get("proposal_id")}`
-- **Final Verdict:** **{review.get("verdict")}**
-- **Score:** **{review.get("overall_score_10")} / 10**
-- **Confidence:** **{review.get("confidence")}**
-"""
-
-    summary_html = render_summary_card(review)
-    dimension_html = render_dimension_cards(review)
-
-    return (
-        status_md,
-        summary_html,
-        dimension_html,
-        report_md,
-        report_path,
-        review_json_path
-    )
-
-
-def clear_ui():
-    return (
-        None,   # file
-        "",     # proposal id
-        "",     # status
-        render_empty_summary(),
-        render_empty_summary(),
-        "",     # report markdown
-        None,   # report download
-        None,   # json download
-    )
-
-
 def auto_run_review(file_obj):
     if file_obj is None:
         return (
-            "Upload a PDF file to start review automatically.",
-            "The formal review report will appear here after upload.",
-            None
+            "Upload a PDF to generate the formal review report.",
+            gr.update(value=None, visible=False)
         )
 
     file_path = Path(file_obj)
@@ -250,301 +38,166 @@ def auto_run_review(file_obj):
         raise gr.Error("Only PDF files are supported.")
 
     yield (
-        "⏳ **Yangtze AI is analyzing the proposal...**",
-        "Generating formal review report...",
-        None
+        "⏳ **Yangtze AI is analyzing the proposal...**\n\nPlease wait while the system generates the formal review report.",
+        gr.update(value=None, visible=False)
     )
 
     result = run_review(file_path=file_path, use_ocr=True)
     report_path, _ = extract_report_and_json(result)
 
-    report_md_text = "Report not found."
+    report_text = "Report not found."
+    download_update = gr.update(value=None, visible=False)
+
     if report_path and Path(report_path).exists():
-        report_md_text = Path(report_path).read_text(encoding="utf-8", errors="ignore")
+        report_text = Path(report_path).read_text(encoding="utf-8", errors="ignore")
+        download_update = gr.update(value=report_path, visible=True)
 
     yield (
-        "✅ **Review completed successfully**",
-        report_md_text,
-        report_path if report_path and Path(report_path).exists() else None
+        report_text,
+        download_update
     )
 
 
-# =========================
-# CSS
-# =========================
 CSS = """
 .gradio-container {
-    max-width: 1180px !important;
+    max-width: 1280px !important;
     margin: 0 auto !important;
+    padding-top: 10px !important;
 }
 
-/* ===== 背景 ===== */
 body {
     background: #0b0f19;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-.app-wrap {
-    margin-top: 10px;
-}
-
-/* ===== 顶部 Hero ===== */
+/* ===== Hero ===== */
 .hero {
     border: 1px solid #1f2a44;
     border-radius: 18px;
-    padding: 28px 28px 22px 28px;
+    padding: 28px 28px 24px 28px;
     background: linear-gradient(180deg, #111827 0%, #0b1220 100%);
     margin-bottom: 22px;
 }
 
 .hero-title {
-    font-size: 40px;
+    font-size: 38px;
     font-weight: 900;
     color: #f8fafc;
-    margin-bottom: 6px;
+    margin-bottom: 10px;
     letter-spacing: -0.5px;
 }
 
 .hero-sub {
     font-size: 15px;
-    color: #9ca3af;
+    color: #cbd5e1;
     line-height: 1.8;
-    margin-bottom: 20px;
 }
 
-/* ===== Steps ===== */
-.steps {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
-}
-
-.step-card {
-    border: 1px solid #1f2a44;
-    border-radius: 14px;
-    padding: 16px;
-    background: #0f172a;
-    transition: 0.2s;
-}
-
-.step-card:hover {
-    border-color: #3b82f6;
-}
-
-.step-no {
-    width: 28px;
-    height: 28px;
-    line-height: 28px;
-    border-radius: 999px;
-    background: #2563eb;
-    color: white;
-    text-align: center;
-    font-weight: 700;
-    margin-bottom: 10px;
-}
-
-.step-title {
-    color: #f1f5f9;
-    font-size: 15px;
-    font-weight: 700;
-    margin-bottom: 4px;
-}
-
-.step-desc {
-    color: #9ca3af;
-    font-size: 13px;
-    line-height: 1.6;
-}
-
-/* ===== Panel ===== */
+/* ===== Two symmetric panels ===== */
 .panel-box {
-    border: 1px solid #1e293b;
-    border-radius: 16px;
-    background: #0f172a;
-    padding: 20px;
-    margin-bottom: 16px;
-    min-height: 420px;
+    border: 1px solid #1e293b !important;
+    border-radius: 18px !important;
+    background: #455165 !important;
+    padding: 28px 24px 24px 24px !important;
+    min-height: 560px !important;
+    box-shadow: none !important;
 }
 
 .panel-title {
-    font-size: 22px;
+    font-size: 24px;
     font-weight: 800;
     color: #f8fafc;
-    margin-bottom: 6px;
+    margin-bottom: 24px;
 }
 
-.panel-desc {
-    color: #9ca3af;
-    font-size: 14px;
-    margin-bottom: 14px;
+.content-frame {
+    height: 390px;
+    display: flex;
+    align-items: stretch;
 }
 
-.help-note {
-    border: 1px solid #1f2a44;
+#upload_box,
+#report_box {
+    width: 100%;
+    height: 100%;
+    border: 3px dashed rgba(255,255,255,0.85);
+    border-radius: 0;
+    background: #1e293b;
+    overflow: hidden;
+}
+
+/* Upload component fills left frame */
+#upload_box > .wrap,
+#upload_box .or,
+#upload_box .file-preview,
+#upload_box .file-upload,
+#upload_box .center {
+    min-height: 100% !important;
+}
+
+/* Report box styling */
+#report_box {
+    border-style: solid;
+    border-width: 0;
     background: #0b1220;
-    color: #94a3b8;
-    border-radius: 12px;
-    padding: 12px 14px;
-    font-size: 13px;
-    line-height: 1.7;
-    margin-top: 8px;
+    border-radius: 18px;
+    padding: 22px 24px;
+    overflow-y: auto;
 }
 
-/* ===== 按钮 ===== */
-button.primary {
-    background: #2563eb !important;
+#report_box .prose,
+#report_box .markdown {
+    color: #f8fafc !important;
+    line-height: 1.8 !important;
+    font-size: 15px !important;
+}
+
+#report_box h1,
+#report_box h2,
+#report_box h3,
+#report_box h4,
+#report_box p,
+#report_box li,
+#report_box strong {
+    color: #f8fafc !important;
+}
+
+/* Download file */
+.download-wrap {
+    margin-top: 18px;
+}
+
+/* Make the download component clean */
+.download-wrap .file-wrap,
+.download-wrap .file-preview,
+.download-wrap .file {
+    border-radius: 12px !important;
+}
+
+/* Remove extra dark block feeling on markdown outer wrapper */
+.report-clean > div {
     border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
 }
 
-button.primary:hover {
-    background: #1d4ed8 !important;
-}
+/* Responsive */
+@media (max-width: 900px) {
+    .panel-box {
+        min-height: auto !important;
+    }
 
-/* ===== Summary ===== */
-.summary-shell {
-    margin-top: 10px;
-}
-
-.summary-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 14px;
-}
-
-.summary-card {
-    border: 1px solid #1e293b;
-    border-radius: 16px;
-    background: #0f172a;
-    padding: 18px;
-    transition: 0.2s;
-}
-
-.summary-card:hover {
-    transform: translateY(-2px);
-}
-
-.summary-label {
-    font-size: 12px;
-    color: #64748b;
-    margin-bottom: 8px;
-    text-transform: uppercase;
-}
-
-.summary-value {
-    font-size: 30px;
-    font-weight: 900;
-    color: #f8fafc;
-}
-
-.small-value {
-    font-size: 20px;
-}
-
-.summary-sub {
-    margin-top: 8px;
-    color: #94a3b8;
-    font-size: 12px;
-}
-
-/* ===== Verdict 强化 ===== */
-.verdict-card {
-    border-width: 2px;
-}
-
-.verdict-support {
-    border-color: #22c55e;
-    background: rgba(34,197,94,0.08);
-}
-
-.verdict-hold {
-    border-color: #f59e0b;
-    background: rgba(245,158,11,0.08);
-}
-
-.verdict-reject {
-    border-color: #ef4444;
-    background: rgba(239,68,68,0.08);
-}
-
-/* ===== Dimension ===== */
-.dim-grid {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 14px;
-    margin-top: 14px;
-}
-
-.dim-card {
-    border: 1px solid #1e293b;
-    border-radius: 14px;
-    background: #0b1220;
-    padding: 18px;
-    text-align: center;
-}
-
-.dim-name {
-    color: #94a3b8;
-    font-size: 13px;
-    margin-bottom: 6px;
-}
-
-.dim-score {
-    color: #f8fafc;
-    font-size: 26px;
-    font-weight: 800;
-}
-
-/* ===== Report ===== */
-.report-box {
-    border: 1px solid #1e293b;
-    border-radius: 16px;
-    background: #0b1220;
-    padding: 20px 24px;
-    line-height: 1.9;
-    font-size: 15px;
-    max-width: 900px;
-    margin: 0 auto;
-}
-
-/* ===== Placeholder ===== */
-.placeholder-box {
-    border: 1px dashed #334155;
-    border-radius: 16px;
-    padding: 24px;
-    background: #0b1220;
-}
-
-.placeholder-title {
-    color: #f8fafc;
-    font-size: 18px;
-    font-weight: 700;
-}
-
-.placeholder-text {
-    color: #94a3b8;
-    margin-top: 6px;
-}
-
-/* ===== 响应式 ===== */
-@media (max-width: 1000px) {
-    .summary-grid { grid-template-columns: 1fr 1fr; }
-    .dim-grid { grid-template-columns: 1fr 1fr; }
-}
-
-@media (max-width: 600px) {
-    .summary-grid { grid-template-columns: 1fr; }
-    .dim-grid { grid-template-columns: 1fr; }
+    .content-frame {
+        height: 320px;
+    }
 }
 """
 
 
-# =========================
-# UI
-# =========================
 with gr.Blocks(
     title="Yangtze AI Reviewer",
     css=CSS,
-    theme=gr.themes.Soft(primary_hue="blue"),
+    theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate", neutral_hue="slate"),
 ) as demo:
 
     gr.HTML("""
@@ -557,38 +210,45 @@ with gr.Blocks(
     """)
 
     with gr.Row(equal_height=True):
-
-        # ===== 左 =====
-        with gr.Column(scale=1):
+        with gr.Column(scale=1, min_width=420):
             with gr.Group(elem_classes=["panel-box"]):
                 gr.HTML('<div class="panel-title">Upload Area</div>')
+                gr.HTML('<div class="content-frame">')
 
                 file_input = gr.File(
-                    label="Proposal PDF",
+                    label="",
                     file_types=[".pdf"],
-                    type="filepath"
+                    type="filepath",
+                    elem_id="upload_box",
+                    show_label=False
                 )
 
-        # ===== 右 =====
-        with gr.Column(scale=1):
+                gr.HTML('</div>')
+
+        with gr.Column(scale=1, min_width=420):
             with gr.Group(elem_classes=["panel-box"]):
                 gr.HTML('<div class="panel-title">Formal Review Report</div>')
+                gr.HTML('<div class="content-frame">')
 
                 report_md = gr.Markdown(
-                    value="",
-                    elem_classes=["report-box"]
+                    value="Upload a PDF to generate the formal review report.",
+                    elem_id="report_box",
+                    elem_classes=["report-clean"],
+                    show_label=False
                 )
 
-                report_file = gr.File(label="Download Report (.md)")
+                gr.HTML('</div>')
 
-    upload_status = gr.Markdown(
-        "Upload a PDF file to start review automatically."
-    )
+                with gr.Group(elem_classes=["download-wrap"]):
+                    report_file = gr.File(
+                        label="Download Report (.md)",
+                        visible=False
+                    )
 
     file_input.change(
         fn=auto_run_review,
         inputs=[file_input],
-        outputs=[upload_status, report_md, report_file],
+        outputs=[report_md, report_file],
     )
 
 if __name__ == "__main__":
