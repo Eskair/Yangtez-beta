@@ -237,6 +237,38 @@ def clear_ui():
     )
 
 
+def auto_run_review(file_obj):
+    if file_obj is None:
+        return (
+            "Upload a PDF file to start review automatically.",
+            "The formal review report will appear here after upload.",
+            None
+        )
+
+    file_path = Path(file_obj)
+    if file_path.suffix.lower() != ".pdf":
+        raise gr.Error("Only PDF files are supported.")
+
+    yield (
+        "⏳ **Yangtze AI is analyzing the proposal...**",
+        "Generating formal review report...",
+        None
+    )
+
+    result = run_review(file_path=file_path, use_ocr=True)
+    report_path, _ = extract_report_and_json(result)
+
+    report_md_text = "Report not found."
+    if report_path and Path(report_path).exists():
+        report_md_text = Path(report_path).read_text(encoding="utf-8", errors="ignore")
+
+    yield (
+        "✅ **Review completed successfully**",
+        report_md_text,
+        report_path if report_path and Path(report_path).exists() else None
+    )
+
+
 # =========================
 # CSS
 # =========================
@@ -511,58 +543,22 @@ button.primary:hover {
 with gr.Blocks(
     title="Yangtze AI Reviewer",
     css=CSS,
-    theme=gr.themes.Soft(
-        primary_hue="blue",
-        secondary_hue="slate",
-        neutral_hue="slate",
-    ),
+    theme=gr.themes.Soft(primary_hue="blue"),
 ) as demo:
 
-    gr.HTML(
-        """
-        <div class="app-wrap">
-            <div class="hero">
-                <div class="hero-title">Yangtze AI Reviewer</div>
-                <div class="hero-sub">
-                    Upload a proposal PDF and receive a structured expert-style scientific review report.
-                    This demo focuses on professional review presentation rather than raw text output.
-                </div>
-
-                <div class="steps">
-                    <div class="step-card">
-                        <div class="step-no">1</div>
-                        <div class="step-title">Upload Proposal PDF</div>
-                        <div class="step-desc">
-                            Submit a project proposal or research application in PDF format.
-                        </div>
-                    </div>
-
-                    <div class="step-card">
-                        <div class="step-no">2</div>
-                        <div class="step-title">Start Automatic Review</div>
-                        <div class="step-desc">
-                            The system runs the complete Yangtze review pipeline automatically.
-                        </div>
-                    </div>
-
-                    <div class="step-card">
-                        <div class="step-no">3</div>
-                        <div class="step-title">Read Formal Review Results</div>
-                        <div class="step-desc">
-                            View the verdict, score summary, dimension scores, and full formal report.
-                        </div>
-                    </div>
-                </div>
-            </div>
+    gr.HTML("""
+    <div class="hero">
+        <div class="hero-title">Yangtze AI Reviewer</div>
+        <div class="hero-sub">
+            Upload a proposal PDF and receive a structured expert-level scientific review report.
         </div>
-        """
-    )
+    </div>
+    """)
 
     with gr.Row():
-        with gr.Column(scale=5):
+        with gr.Column(scale=4):
             with gr.Group(elem_classes=["panel-box"]):
                 gr.HTML('<div class="panel-title">Upload Area</div>')
-                gr.HTML('<div class="panel-desc">Upload one PDF file for expert-style proposal review.</div>')
 
                 file_input = gr.File(
                     label="Proposal PDF",
@@ -570,58 +566,25 @@ with gr.Blocks(
                     type="filepath"
                 )
 
-                proposal_id_input = gr.Textbox(
-                    label="Proposal ID (optional)",
-                    placeholder="e.g. sznf_demo_01",
-                    lines=1
+                upload_status = gr.Markdown(
+                    "Upload a PDF file to start review automatically."
                 )
 
-                gr.HTML(
-                    """
-                    <div class="help-note">
-                        <b>How to use:</b><br>
-                        1. Upload a PDF proposal.<br>
-                        2. Optionally enter a Proposal ID.<br>
-                        3. Click <b>Start Review</b> to generate the formal report.
-                    </div>
-                    """
-                )
-
-                with gr.Row():
-                    clear_btn = gr.Button("Clear")
-                    submit_btn = gr.Button("Start Review", variant="primary")
-
-        with gr.Column(scale=7):
+        with gr.Column(scale=8):
             with gr.Group(elem_classes=["panel-box"]):
-                gr.HTML('<div class="panel-title">Review Summary</div>')
-                gr.HTML('<div class="panel-desc">Key results are shown here first for fast reading.</div>')
+                gr.HTML('<div class="panel-title">Formal Review Report</div>')
 
-                status_md = gr.Markdown("")
-                summary_html = gr.HTML(render_empty_summary())
-                dimension_html = gr.HTML(render_empty_summary())
+                report_md = gr.Markdown(
+                    value="The formal review report will appear here after upload.",
+                    elem_classes=["report-box"]
+                )
 
-    with gr.Group(elem_classes=["panel-box"]):
-        gr.HTML('<div class="panel-title">Formal Review Report</div>')
-        gr.HTML('<div class="panel-desc">Detailed structured report generated by the Yangtze reviewer.</div>')
+                report_file = gr.File(label="Download Report (.md)")
 
-        with gr.Tabs():
-            with gr.Tab("Report"):
-                report_md = gr.Markdown(value="", elem_classes=["report-box"])
-
-            with gr.Tab("Export"):
-                report_file = gr.File(label="Download Review Report (.md)")
-                review_json_file = gr.File(label="Download Review JSON")
-
-    submit_btn.click(
-        fn=run_ui_review,
-        inputs=[file_input, proposal_id_input],
-        outputs=[status_md, summary_html, dimension_html, report_md, report_file, review_json_file],
-    )
-
-    clear_btn.click(
-        fn=clear_ui,
-        inputs=[],
-        outputs=[file_input, proposal_id_input, status_md, summary_html, dimension_html, report_md, report_file, review_json_file],
+    file_input.change(
+        fn=auto_run_review,
+        inputs=[file_input],
+        outputs=[upload_status, report_md, report_file],
     )
 
 if __name__ == "__main__":
