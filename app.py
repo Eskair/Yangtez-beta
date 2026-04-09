@@ -558,7 +558,7 @@ with gr.Blocks(
 
     with gr.Row(equal_height=True):
 
-        # 左
+        # ===== 左 =====
         with gr.Column(scale=1):
             with gr.Group(elem_classes=["panel-box"]):
                 gr.HTML('<div class="panel-title">Upload Area</div>')
@@ -569,21 +569,21 @@ with gr.Blocks(
                     type="filepath"
                 )
 
-                upload_status = gr.Markdown(
-                    "Upload a PDF file to start review automatically."
-                )
-
-        # 右
+        # ===== 右 =====
         with gr.Column(scale=1):
             with gr.Group(elem_classes=["panel-box"]):
                 gr.HTML('<div class="panel-title">Formal Review Report</div>')
 
                 report_md = gr.Markdown(
-                    value="The formal review report will appear here after upload.",
+                    value="",
                     elem_classes=["report-box"]
                 )
 
                 report_file = gr.File(label="Download Report (.md)")
+
+    upload_status = gr.Markdown(
+        "Upload a PDF file to start review automatically."
+    )
 
     file_input.change(
         fn=auto_run_review,
