@@ -132,20 +132,20 @@ body {
 .stage-wrap {
     height: 390px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;   /* 关键：顶部对齐 */
     justify-content: center;
 }
 
-/* same size box for both sides */
+/* same size container for both sides */
 .box-frame {
     width: 100%;
-    height: 300px;
+    height: 100%;
 }
 
 /* ===== Upload box ===== */
 #upload_box {
     width: 100%;
-    height: 300px !important;
+    height: 100% !important;
     min-height: 300px !important;
     border: 2px dashed rgba(255,255,255,0.88) !important;
     border-radius: 0 !important;
@@ -153,13 +153,14 @@ body {
 }
 
 #upload_box > .wrap {
-    min-height: 300px !important;
+    min-height: 100% !important;
 }
 
 /* ===== Report display box ===== */
 #report_shell {
     width: 100%;
-    height: 300px;
+    height: 100%;
+    min-height: 300px;
     border-radius: 22px;
     background: #061225;
     overflow: hidden;
