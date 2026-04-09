@@ -159,11 +159,26 @@ def run_ui_review(file_obj, proposal_id):
     if file_obj is None:
         raise gr.Error("Please upload a PDF file first.")
 
-    # 👉 Step 1: 立即显示 processing 状态
+    # 🔥 STEP 1：立即显示运行状态
     yield (
-        "⏳ **Analyzing proposal... please wait**",
-        "<div class='placeholder-box'>Processing document...</div>",
-        "<div class='placeholder-box'>Evaluating dimensions...</div>",
+        "⏳ **Yangtze AI is analyzing your proposal...**",
+        """
+        <div class="placeholder-box">
+            🔍 Parsing document structure...<br>
+            📊 Extracting key information...<br>
+            🤖 Running expert evaluation...
+        </div>
+        """,
+        """
+        <div class="placeholder-box">
+            Evaluating dimensions:<br>
+            • Team<br>
+            • Objectives<br>
+            • Strategy<br>
+            • Innovation<br>
+            • Feasibility
+        </div>
+        """,
         "",
         None,
         None
@@ -190,9 +205,10 @@ def run_ui_review(file_obj, proposal_id):
     status_md = f"""
 ✅ **Review completed**
 
-- Proposal: `{review.get("proposal_id")}`
-- Verdict: **{review.get("verdict")}**
-- Score: **{review.get("overall_score_10")}**
+- **Proposal:** `{review.get("proposal_id")}`
+- **Final Verdict:** **{review.get("verdict")}**
+- **Score:** **{review.get("overall_score_10")} / 10**
+- **Confidence:** **{review.get("confidence")}**
 """
 
     summary_html = render_summary_card(review)
