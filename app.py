@@ -30,7 +30,7 @@ def auto_run_review(file_obj):
     if file_obj is None:
         return (
             "Upload a PDF to generate the formal review report.",
-            gr.update(value=None, visible=False)
+            gr.update(value=None, visible=False),
         )
 
     file_path = Path(file_obj)
@@ -38,31 +38,31 @@ def auto_run_review(file_obj):
         raise gr.Error("Only PDF files are supported.")
 
     yield (
-        "⏳ **Yangtze AI is analyzing the proposal...**\n\nPlease wait while the system generates the formal review report.",
-        gr.update(value=None, visible=False)
+        "⏳ **Yangtze AI is analyzing the proposal...**\n\nPlease wait while the formal review report is being generated.",
+        gr.update(value=None, visible=False),
     )
 
     result = run_review(file_path=file_path, use_ocr=True)
     report_path, _ = extract_report_and_json(result)
 
     report_text = "Report not found."
-    download_update = gr.update(value=None, visible=False)
+    file_update = gr.update(value=None, visible=False)
 
     if report_path and Path(report_path).exists():
         report_text = Path(report_path).read_text(encoding="utf-8", errors="ignore")
-        download_update = gr.update(value=report_path, visible=True)
+        file_update = gr.update(value=report_path, visible=True)
 
     yield (
         report_text,
-        download_update
+        file_update,
     )
 
 
 CSS = """
 .gradio-container {
-    max-width: 1280px !important;
+    max-width: 1320px !important;
     margin: 0 auto !important;
-    padding-top: 10px !important;
+    padding-top: 12px !important;
 }
 
 body {
@@ -80,7 +80,7 @@ body {
 }
 
 .hero-title {
-    font-size: 38px;
+    font-size: 40px;
     font-weight: 900;
     color: #f8fafc;
     margin-bottom: 10px;
@@ -93,62 +93,70 @@ body {
     line-height: 1.8;
 }
 
-/* ===== Two symmetric panels ===== */
+/* ===== Main 2-column layout ===== */
+#main-panels {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 18px !important;
+    align-items: stretch !important;
+}
+
+#main-panels > .gr-column {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+}
+
+/* ===== Symmetric panel ===== */
 .panel-box {
     border: 1px solid #1e293b !important;
     border-radius: 18px !important;
     background: #455165 !important;
-    padding: 28px 24px 24px 24px !important;
+    padding: 24px !important;
     min-height: 560px !important;
     box-shadow: none !important;
 }
 
 .panel-title {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 800;
     color: #f8fafc;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
 }
 
-.content-frame {
-    height: 390px;
+.panel-stage {
+    height: 430px;
     display: flex;
     align-items: stretch;
 }
 
-#upload_box,
+/* ===== Upload box ===== */
+#upload_box {
+    width: 100%;
+    min-height: 430px !important;
+    border: 2px dashed rgba(255,255,255,0.88) !important;
+    border-radius: 0 !important;
+    background: #1f2c40 !important;
+}
+
+#upload_box > .wrap {
+    min-height: 430px !important;
+}
+
+/* ===== Report box ===== */
 #report_box {
     width: 100%;
-    height: 100%;
-    border: 3px dashed rgba(255,255,255,0.85);
-    border-radius: 0;
-    background: #1e293b;
-    overflow: hidden;
-}
-
-/* Upload component fills left frame */
-#upload_box > .wrap,
-#upload_box .or,
-#upload_box .file-preview,
-#upload_box .file-upload,
-#upload_box .center {
-    min-height: 100% !important;
-}
-
-/* Report box styling */
-#report_box {
-    border-style: solid;
-    border-width: 0;
-    background: #0b1220;
-    border-radius: 18px;
-    padding: 22px 24px;
-    overflow-y: auto;
+    min-height: 430px !important;
+    border: 2px solid rgba(255,255,255,0.08) !important;
+    border-radius: 18px !important;
+    background: #081224 !important;
+    padding: 22px 24px !important;
+    overflow-y: auto !important;
 }
 
 #report_box .prose,
 #report_box .markdown {
     color: #f8fafc !important;
-    line-height: 1.8 !important;
+    line-height: 1.85 !important;
     font-size: 15px !important;
 }
 
@@ -162,33 +170,41 @@ body {
     color: #f8fafc !important;
 }
 
-/* Download file */
-.download-wrap {
-    margin-top: 18px;
-}
-
-/* Make the download component clean */
-.download-wrap .file-wrap,
-.download-wrap .file-preview,
-.download-wrap .file {
-    border-radius: 12px !important;
-}
-
-/* Remove extra dark block feeling on markdown outer wrapper */
-.report-clean > div {
+/* Remove outer markdown shell look */
+.report-clean {
     border: none !important;
     background: transparent !important;
     padding: 0 !important;
+    margin: 0 !important;
 }
 
-/* Responsive */
+/* ===== Download area ===== */
+.download-bar {
+    margin-top: 18px;
+}
+
+/* ===== Mobile fallback ===== */
 @media (max-width: 900px) {
+    #main-panels {
+        flex-wrap: wrap !important;
+    }
+
+    #main-panels > .gr-column {
+        min-width: 100% !important;
+    }
+
     .panel-box {
         min-height: auto !important;
     }
 
-    .content-frame {
+    .panel-stage {
         height: 320px;
+    }
+
+    #upload_box,
+    #upload_box > .wrap,
+    #report_box {
+        min-height: 320px !important;
     }
 }
 """
@@ -209,41 +225,41 @@ with gr.Blocks(
     </div>
     """)
 
-    with gr.Row(equal_height=True):
-        with gr.Column(scale=1, min_width=420):
+    with gr.Row(elem_id="main-panels", equal_height=True):
+        with gr.Column(scale=1, min_width=0):
             with gr.Group(elem_classes=["panel-box"]):
                 gr.HTML('<div class="panel-title">Upload Area</div>')
-                gr.HTML('<div class="content-frame">')
+                gr.HTML('<div class="panel-stage">')
 
                 file_input = gr.File(
                     label="",
                     file_types=[".pdf"],
                     type="filepath",
+                    show_label=False,
                     elem_id="upload_box",
-                    show_label=False
                 )
 
                 gr.HTML('</div>')
 
-        with gr.Column(scale=1, min_width=420):
+        with gr.Column(scale=1, min_width=0):
             with gr.Group(elem_classes=["panel-box"]):
                 gr.HTML('<div class="panel-title">Formal Review Report</div>')
-                gr.HTML('<div class="content-frame">')
+                gr.HTML('<div class="panel-stage">')
 
                 report_md = gr.Markdown(
                     value="Upload a PDF to generate the formal review report.",
+                    show_label=False,
                     elem_id="report_box",
                     elem_classes=["report-clean"],
-                    show_label=False
                 )
 
                 gr.HTML('</div>')
 
-                with gr.Group(elem_classes=["download-wrap"]):
-                    report_file = gr.File(
-                        label="Download Report (.md)",
-                        visible=False
-                    )
+    with gr.Group(elem_classes=["download-bar"]):
+        report_file = gr.File(
+            label="Download Report (.md)",
+            visible=False
+        )
 
     file_input.change(
         fn=auto_run_review,
