@@ -48,44 +48,47 @@ def auto_run_review(file_obj):
 
 CSS = """
 .gradio-container {
-    max-width: 1320px !important;
+    max-width: 1360px !important;
     margin: 0 auto !important;
     padding-top: 12px !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
 }
 
 body {
-    background: #0b0f19;
+    background: #09111f;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 /* ===== Hero ===== */
 .hero {
-    border: 1px solid #1f2a44;
-    border-radius: 18px;
-    padding: 28px 28px 24px 28px;
-    background: linear-gradient(180deg, #111827 0%, #0b1220 100%);
-    margin-bottom: 22px;
+    border: 1px solid #23314e;
+    border-radius: 22px;
+    padding: 34px 34px 30px 34px;
+    background: linear-gradient(180deg, #0d1730 0%, #09111f 100%);
+    margin-bottom: 26px;
 }
 
 .hero-title {
-    font-size: 40px;
+    font-size: 58px;
     font-weight: 900;
     color: #f8fafc;
-    margin-bottom: 10px;
-    letter-spacing: -0.5px;
+    margin-bottom: 14px;
+    letter-spacing: -1px;
+    line-height: 1.05;
 }
 
 .hero-sub {
-    font-size: 15px;
-    color: #cbd5e1;
+    font-size: 16px;
+    color: #e2e8f0;
     line-height: 1.8;
 }
 
-/* ===== Main two-column layout ===== */
+/* ===== Main layout ===== */
 #main-panels {
     display: flex !important;
     flex-wrap: nowrap !important;
-    gap: 18px !important;
+    gap: 20px !important;
     align-items: stretch !important;
 }
 
@@ -94,58 +97,82 @@ body {
     min-width: 0 !important;
 }
 
-/* ===== Symmetric panels ===== */
+/* ===== Outer cards ===== */
 .panel-box {
-    border: 1px solid #1e293b !important;
-    border-radius: 18px !important;
-    background: #455165 !important;
-    padding: 24px !important;
-    min-height: 320px !important;
+    border: 1px solid rgba(14, 25, 43, 0.55) !important;
+    border-radius: 26px !important;
+    background: #4f5d74 !important;
+    padding: 28px !important;
+    min-height: 560px !important;
     box-shadow: none !important;
 }
 
-.panel-title {
-    font-size: 22px;
-    font-weight: 800;
-    color: #f8fafc;
-    margin-bottom: 20px;
+/* ===== Inner cards ===== */
+.inner-shell {
+    border: 1px solid rgba(18, 28, 44, 0.6);
+    border-radius: 22px;
+    background: rgba(79, 93, 116, 0.88);
+    padding: 28px;
+    min-height: 500px;
 }
 
-.panel-stage {
-    height: 220px;
+.panel-title {
+    font-size: 26px;
+    font-weight: 800;
+    color: #f8fafc;
+    margin-bottom: 24px;
+    line-height: 1.2;
+}
+
+.stage-wrap {
+    height: 360px;
     display: flex;
-    align-items: stretch;
+    align-items: center;
+    justify-content: center;
 }
 
 /* ===== Upload box ===== */
 #upload_box {
     width: 100%;
-    min-height: 220px !important;
-    border: 2px dashed rgba(255,255,255,0.88) !important;
+    height: 290px !important;
+    min-height: 290px !important;
+    border: 2px dashed rgba(255,255,255,0.9) !important;
     border-radius: 0 !important;
-    background: #1f2c40 !important;
+    background: #22324b !important;
 }
 
 #upload_box > .wrap {
-    min-height: 220px !important;
+    min-height: 290px !important;
 }
 
-/* ===== Report box ===== */
+/* ===== Report display box ===== */
+#report_shell {
+    width: 100%;
+    height: 290px;
+    border-radius: 24px;
+    background: #071325;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+}
+
 #report_box {
     width: 100%;
-    min-height: 220px !important;
-    border: 2px solid rgba(255,255,255,0.08) !important;
-    border-radius: 18px !important;
-    background: #081224 !important;
-    padding: 22px 24px !important;
+    height: 100%;
+    border: none !important;
+    border-radius: 24px !important;
+    background: #071325 !important;
+    padding: 24px 26px !important;
     overflow-y: auto !important;
 }
 
+/* Markdown text inside report */
 #report_box .prose,
 #report_box .markdown {
     color: #f8fafc !important;
     line-height: 1.85 !important;
     font-size: 15px !important;
+    max-width: 100% !important;
 }
 
 #report_box h1,
@@ -158,7 +185,6 @@ body {
     color: #f8fafc !important;
 }
 
-/* Remove outer markdown shell look */
 .report-clean {
     border: none !important;
     background: transparent !important;
@@ -166,8 +192,12 @@ body {
     margin: 0 !important;
 }
 
-/* ===== Mobile fallback ===== */
-@media (max-width: 900px) {
+/* ===== Mobile ===== */
+@media (max-width: 980px) {
+    .hero-title {
+        font-size: 42px;
+    }
+
     #main-panels {
         flex-wrap: wrap !important;
     }
@@ -180,14 +210,19 @@ body {
         min-height: auto !important;
     }
 
-    .panel-stage {
-        height: 220px;
+    .inner-shell {
+        min-height: auto !important;
+    }
+
+    .stage-wrap {
+        height: auto;
     }
 
     #upload_box,
     #upload_box > .wrap,
-    #report_box {
-        min-height: 220px !important;
+    #report_shell {
+        height: 260px !important;
+        min-height: 260px !important;
     }
 }
 """
@@ -215,8 +250,11 @@ with gr.Blocks(
     with gr.Row(elem_id="main-panels", equal_height=True):
         with gr.Column(scale=1, min_width=0):
             with gr.Group(elem_classes=["panel-box"]):
-                gr.HTML('<div class="panel-title">Upload Area</div>')
-                gr.HTML('<div class="panel-stage">')
+                gr.HTML("""
+                <div class="inner-shell">
+                    <div class="panel-title">Upload Area</div>
+                    <div class="stage-wrap">
+                """)
 
                 file_input = gr.File(
                     label="",
@@ -226,12 +264,19 @@ with gr.Blocks(
                     elem_id="upload_box",
                 )
 
-                gr.HTML('</div>')
+                gr.HTML("""
+                    </div>
+                </div>
+                """)
 
         with gr.Column(scale=1, min_width=0):
             with gr.Group(elem_classes=["panel-box"]):
-                gr.HTML('<div class="panel-title">Formal Review Report</div>')
-                gr.HTML('<div class="panel-stage">')
+                gr.HTML("""
+                <div class="inner-shell">
+                    <div class="panel-title">Formal Review<br>Report</div>
+                    <div class="stage-wrap">
+                        <div id="report_shell">
+                """)
 
                 report_md = gr.Markdown(
                     value="",
@@ -240,7 +285,11 @@ with gr.Blocks(
                     elem_classes=["report-clean"],
                 )
 
-                gr.HTML('</div>')
+                gr.HTML("""
+                        </div>
+                    </div>
+                </div>
+                """)
 
     file_input.change(
         fn=auto_run_review,
