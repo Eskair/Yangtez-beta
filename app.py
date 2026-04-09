@@ -91,18 +91,18 @@ body {
 
 .panel-outer {
     border: 1px solid rgba(20, 31, 49, 0.65) !important;
-    border-radius: 22px !important;
+    border-radius: 18px !important;
     background: #556279 !important;
-    padding: 18px !important;
+    padding: 14px !important;
     min-height: 560px !important;
     box-shadow: none !important;
 }
 
 .panel-inner {
     border: 1px solid rgba(30, 41, 59, 0.8) !important;
-    border-radius: 20px !important;
+    border-radius: 16px !important;
     background: rgba(85, 98, 121, 0.95) !important;
-    padding: 18px !important;
+    padding: 14px !important;
     min-height: 520px !important;
     box-shadow: none !important;
 }
@@ -120,13 +120,13 @@ body {
 }
 
 .panel-heading {
-    height: 64px;
+    height: 52px;
     display: flex;
     align-items: flex-start;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 800;
     color: #f8fafc;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 /* This row is the actual one-box content area */
@@ -168,6 +168,34 @@ body {
 .upload-zone,
 .report-zone {
     overflow: hidden !important;
+}
+
+.panel-outer,
+.panel-inner,
+.content-slot {
+    overflow: hidden !important;
+}
+
+.panel-outer > div,
+.panel-inner > div,
+.content-slot > div {
+    overflow: hidden !important;
+}
+
+.upload-zone,
+.report-zone {
+    overflow: hidden !important;
+}
+
+/* Extra guard: hide webkit scrollbar arrow buttons if any wrapper still scrolls */
+.panel-outer::-webkit-scrollbar-button,
+.panel-inner::-webkit-scrollbar-button,
+.content-slot::-webkit-scrollbar-button,
+.upload-zone::-webkit-scrollbar-button,
+.report-zone::-webkit-scrollbar-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
 }
 
 .report-zone,
