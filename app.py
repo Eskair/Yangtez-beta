@@ -3,7 +3,6 @@
 
 from pathlib import Path
 import gradio as gr
-
 from run_review import run_review
 
 
@@ -48,11 +47,11 @@ def auto_run_review(file_obj):
 
 CSS = """
 .gradio-container {
-    max-width: 1280px !important;
+    max-width: 1320px !important;
     margin: 0 auto !important;
-    padding-top: 10px !important;
-    padding-left: 8px !important;
-    padding-right: 8px !important;
+    padding-top: 12px !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
 }
 
 body {
@@ -63,23 +62,23 @@ body {
 /* ===== Hero ===== */
 .hero {
     border: 1px solid #23314e;
-    border-radius: 18px;
-    padding: 24px 26px 20px 26px;
+    border-radius: 20px;
+    padding: 26px 28px 22px 28px;
     background: linear-gradient(180deg, #0d1730 0%, #09111f 100%);
-    margin-bottom: 18px;
+    margin-bottom: 22px;
 }
 
 .hero-title {
-    font-size: 34px;
+    font-size: 36px;
     font-weight: 900;
     color: #f8fafc;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     letter-spacing: -0.5px;
     line-height: 1.08;
 }
 
 .hero-sub {
-    font-size: 14px;
+    font-size: 15px;
     color: #dbe4f0;
     line-height: 1.7;
 }
@@ -88,7 +87,7 @@ body {
 #main-panels {
     display: flex !important;
     flex-wrap: nowrap !important;
-    gap: 14px !important;
+    gap: 18px !important;
     align-items: stretch !important;
 }
 
@@ -100,58 +99,69 @@ body {
 /* ===== Outer cards ===== */
 .panel-box {
     border: 1px solid rgba(20, 31, 49, 0.65) !important;
-    border-radius: 20px !important;
+    border-radius: 22px !important;
     background: #556279 !important;
-    padding: 16px !important;
-    min-height: 500px !important;
+    padding: 18px !important;
+    min-height: 560px !important;
     box-shadow: none !important;
 }
 
 /* ===== Inner cards ===== */
 .inner-shell {
     border: 1px solid rgba(30, 41, 59, 0.8);
-    border-radius: 18px;
-    background: rgba(85, 98, 121, 0.92);
-    padding: 16px;
-    min-height: 460px;
+    border-radius: 20px;
+    background: rgba(85, 98, 121, 0.95);
+    padding: 18px;
+    min-height: 520px;
 }
 
+/* fixed title height so left/right stay aligned */
 .panel-title {
+    height: 64px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
     font-size: 20px;
     font-weight: 800;
     color: #f8fafc;
-    margin-bottom: 14px;
-    line-height: 1.2;
+    line-height: 1.25;
+    margin-bottom: 12px;
 }
 
+/* fixed area for both inner boxes */
 .stage-wrap {
-    height: 360px;
+    height: 390px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
+/* same size box for both sides */
+.box-frame {
+    width: 100%;
+    height: 300px;
+}
+
 /* ===== Upload box ===== */
 #upload_box {
     width: 100%;
-    height: 330px !important;
-    min-height: 330px !important;
+    height: 300px !important;
+    min-height: 300px !important;
     border: 2px dashed rgba(255,255,255,0.88) !important;
     border-radius: 0 !important;
     background: #23324a !important;
 }
 
 #upload_box > .wrap {
-    min-height: 330px !important;
+    min-height: 300px !important;
 }
 
 /* ===== Report display box ===== */
 #report_shell {
     width: 100%;
-    height: 330px;
-    border-radius: 20px;
+    height: 300px;
+    border-radius: 22px;
     background: #061225;
-    padding: 0;
     overflow: hidden;
     box-shadow: 0 8px 22px rgba(0,0,0,0.18);
 }
@@ -160,13 +170,13 @@ body {
     width: 100%;
     height: 100%;
     border: none !important;
-    border-radius: 20px !important;
+    border-radius: 22px !important;
     background: #061225 !important;
     padding: 18px 20px !important;
     overflow-y: auto !important;
 }
 
-/* Markdown text inside report */
+/* Markdown text */
 #report_box .prose,
 #report_box .markdown {
     color: #f8fafc !important;
@@ -195,7 +205,7 @@ body {
 /* ===== Mobile ===== */
 @media (max-width: 980px) {
     .hero-title {
-        font-size: 28px;
+        font-size: 30px;
     }
 
     #main-panels {
@@ -206,23 +216,26 @@ body {
         min-width: 100% !important;
     }
 
-    .panel-box {
-        min-height: auto !important;
-    }
-
+    .panel-box,
     .inner-shell {
         min-height: auto !important;
     }
 
-    .stage-wrap {
+    .panel-title {
         height: auto;
+        min-height: 48px;
     }
 
+    .stage-wrap {
+        height: 320px;
+    }
+
+    .box-frame,
     #upload_box,
     #upload_box > .wrap,
     #report_shell {
-        height: 280px !important;
-        min-height: 280px !important;
+        height: 250px !important;
+        min-height: 250px !important;
     }
 }
 """
@@ -254,6 +267,7 @@ with gr.Blocks(
                 <div class="inner-shell">
                     <div class="panel-title">Upload Area</div>
                     <div class="stage-wrap">
+                        <div class="box-frame">
                 """)
 
                 file_input = gr.File(
@@ -265,6 +279,7 @@ with gr.Blocks(
                 )
 
                 gr.HTML("""
+                        </div>
                     </div>
                 </div>
                 """)
@@ -275,7 +290,7 @@ with gr.Blocks(
                 <div class="inner-shell">
                     <div class="panel-title">Formal Review Report</div>
                     <div class="stage-wrap">
-                        <div id="report_shell">
+                        <div id="report_shell" class="box-frame">
                 """)
 
                 report_md = gr.Markdown(
