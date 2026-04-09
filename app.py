@@ -64,9 +64,9 @@ body {
 .hero {
     border: 1px solid #23314e;
     border-radius: 20px;
-    padding: 26px 28px 22px 28px;
+    padding: 24px 26px 20px 26px;
     background: linear-gradient(180deg, #0d1730 0%, #09111f 100%);
-    margin-bottom: 22px;
+    margin-bottom: 20px;
 }
 
 .hero-title {
@@ -107,18 +107,6 @@ body {
     box-shadow: none !important;
 }
 
-.panel-outer,
-.panel-inner,
-.content-slot {
-    overflow: hidden !important;
-}
-
-.panel-outer > div,
-.panel-inner > div,
-.content-slot > div {
-    overflow: hidden !important;
-}
-
 .panel-heading {
     height: 52px;
     display: flex;
@@ -129,30 +117,25 @@ body {
     margin-bottom: 10px;
 }
 
-/* This row is the actual one-box content area */
+/* actual single content area */
 .content-slot {
     min-height: 390px !important;
+    overflow: hidden !important;
 }
 
 /* Upload side */
 .upload-zone {
     min-height: 390px !important;
-}
-
-.upload-zone > .wrap {
-    min-height: 390px !important;
-}
-
-.upload-zone .file-upload,
-.upload-zone .file-upload-secondary {
-    min-height: 390px !important;
-}
-
-.upload-zone {
     border: 2px dashed rgba(255,255,255,0.88) !important;
     border-radius: 0 !important;
     background: #23324a !important;
     overflow: hidden !important;
+}
+
+.upload-zone > .wrap,
+.upload-zone .file-upload,
+.upload-zone .file-upload-secondary {
+    min-height: 390px !important;
 }
 
 /* Report side */
@@ -161,41 +144,8 @@ body {
     border-radius: 22px !important;
     background: #061225 !important;
     padding: 18px 20px !important;
-    overflow-y: auto !important;
+    overflow: auto !important;
     box-shadow: 0 8px 22px rgba(0,0,0,0.18);
-}
-
-.upload-zone,
-.report-zone {
-    overflow: hidden !important;
-}
-
-.panel-outer,
-.panel-inner,
-.content-slot {
-    overflow: hidden !important;
-}
-
-.panel-outer > div,
-.panel-inner > div,
-.content-slot > div {
-    overflow: hidden !important;
-}
-
-.upload-zone,
-.report-zone {
-    overflow: hidden !important;
-}
-
-/* Extra guard: hide webkit scrollbar arrow buttons if any wrapper still scrolls */
-.panel-outer::-webkit-scrollbar-button,
-.panel-inner::-webkit-scrollbar-button,
-.content-slot::-webkit-scrollbar-button,
-.upload-zone::-webkit-scrollbar-button,
-.report-zone::-webkit-scrollbar-button {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
 }
 
 .report-zone,
@@ -219,6 +169,43 @@ body {
 .report-zone li,
 .report-zone strong {
     color: #f8fafc !important;
+}
+
+/* 去掉容器内部滚动条 */
+.panel-outer,
+.panel-inner,
+.content-slot,
+.upload-zone,
+.report-zone {
+    overflow: hidden !important;
+}
+
+/* WebKit */
+.panel-outer::-webkit-scrollbar,
+.panel-inner::-webkit-scrollbar,
+.content-slot::-webkit-scrollbar,
+.upload-zone::-webkit-scrollbar,
+.report-zone::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+}
+
+/* Firefox */
+.panel-outer,
+.panel-inner,
+.content-slot,
+.upload-zone,
+.report-zone {
+    scrollbar-width: none !important;
+}
+
+/* remove outer markdown borders */
+.report-zone .gradio-markdown,
+.report-zone .gr-markdown,
+.report-zone .markdown {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
 }
 
 /* Mobile */
