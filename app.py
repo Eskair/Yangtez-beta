@@ -139,21 +139,35 @@ def extract_report_and_json(result: dict):
     report_path = None
     review_json_path = None
 
-    for k, v in result.items():
+    for _, v in result.items():
+        if isinstance(v, Path):
+            v = str(v)
         if not isinstance(v, str):
             continue
-        if v.endswith(".md"):
+
+        if v.endswith(".md") and report_path is None:
             report_path = v
-        if v.endswith("review.json") or v.endswith(".json"):
-            if "review" in Path(v).name.lower():
-                review_json_path = v
+
+        if v.endswith(".json") and "review" in Path(v).name.lower() and review_json_path is None:
+            review_json_path = v
 
     return report_path, review_json_path
 
 
 def run_ui_review(file_obj, proposal_id):
+
     if file_obj is None:
         raise gr.Error("Please upload a PDF file first.")
+
+    # 👉 Step 1: 立即显示 processing 状态
+    yield (
+        "⏳ **Analyzing proposal... please wait**",
+        "<div class='placeholder-box'>Processing document...</div>",
+        "<div class='placeholder-box'>Evaluating dimensions...</div>",
+        "",
+        None,
+        None
+    )
 
     file_path = Path(file_obj)
     if file_path.suffix.lower() != ".pdf":
@@ -167,9 +181,6 @@ def run_ui_review(file_obj, proposal_id):
 
     report_path, review_json_path = extract_report_and_json(result)
 
-    if review_json_path is None:
-        raise gr.Error("Review finished, but review.json was not found.")
-
     review = json.loads(Path(review_json_path).read_text(encoding="utf-8"))
 
     report_md = ""
@@ -177,21 +188,24 @@ def run_ui_review(file_obj, proposal_id):
         report_md = Path(report_path).read_text(encoding="utf-8", errors="ignore")
 
     status_md = f"""
-**Review completed successfully**
+✅ **Review completed**
 
-- **Proposal ID:** `{safe_text(review.get("proposal_id"))}`
-- **Final Verdict:** **{normalize_verdict(review.get("verdict"))}**
-- **Overall Score:** **{fmt_score(review.get("overall_score_10"))} / 10**
-- **Confidence:** **{fmt_conf(review.get("confidence"))}**
+- Proposal: `{review.get("proposal_id")}`
+- Verdict: **{review.get("verdict")}**
+- Score: **{review.get("overall_score_10")}**
 """
 
     summary_html = render_summary_card(review)
     dimension_html = render_dimension_cards(review)
 
-    report_download = report_path if report_path and Path(report_path).exists() else None
-    json_download = review_json_path if Path(review_json_path).exists() else None
-
-    return status_md, summary_html, dimension_html, report_md, report_download, json_download
+    return (
+        status_md,
+        summary_html,
+        dimension_html,
+        report_md,
+        report_path,
+        review_json_path
+    )
 
 
 def clear_ui():
@@ -220,6 +234,10 @@ CSS = """
 body {
     background: #0b0f19;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.app-wrap {
+    margin-top: 10px;
 }
 
 /* ===== 顶部 Hero ===== */
@@ -310,6 +328,17 @@ body {
     color: #9ca3af;
     font-size: 14px;
     margin-bottom: 14px;
+}
+
+.help-note {
+    border: 1px solid #1f2a44;
+    background: #0b1220;
+    color: #94a3b8;
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.7;
+    margin-top: 8px;
 }
 
 /* ===== 按钮 ===== */
@@ -467,7 +496,7 @@ with gr.Blocks(
     title="Yangtze AI Reviewer",
     css=CSS,
     theme=gr.themes.Soft(
-        primary_hue="orange",
+        primary_hue="blue",
         secondary_hue="slate",
         neutral_hue="slate",
     ),
