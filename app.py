@@ -363,6 +363,7 @@ body {
     background: #0f172a;
     padding: 20px;
     margin-bottom: 16px;
+    min-height: 420px;
 }
 
 .panel-title {
@@ -555,8 +556,10 @@ with gr.Blocks(
     </div>
     """)
 
-    with gr.Row():
-        with gr.Column(scale=4):
+    with gr.Row(equal_height=True):
+
+        # 左
+        with gr.Column(scale=1):
             with gr.Group(elem_classes=["panel-box"]):
                 gr.HTML('<div class="panel-title">Upload Area</div>')
 
@@ -570,7 +573,8 @@ with gr.Blocks(
                     "Upload a PDF file to start review automatically."
                 )
 
-        with gr.Column(scale=8):
+        # 右
+        with gr.Column(scale=1):
             with gr.Group(elem_classes=["panel-box"]):
                 gr.HTML('<div class="panel-title">Formal Review Report</div>')
 
