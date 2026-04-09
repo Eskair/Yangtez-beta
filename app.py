@@ -84,21 +84,12 @@ body {
     line-height: 1.7;
 }
 
-/* ===== Main layout ===== */
+/* ===== Main symmetric layout ===== */
 #main-panels {
-    display: flex !important;
-    flex-wrap: nowrap !important;
     gap: 18px !important;
-    align-items: stretch !important;
 }
 
-#main-panels > .gr-column {
-    flex: 1 1 0 !important;
-    min-width: 0 !important;
-}
-
-/* ===== Outer cards ===== */
-.panel-box {
+.panel-outer {
     border: 1px solid rgba(20, 31, 49, 0.65) !important;
     border-radius: 22px !important;
     background: #556279 !important;
@@ -107,56 +98,53 @@ body {
     box-shadow: none !important;
 }
 
-/* ===== Inner cards ===== */
-.inner-shell {
-    border: 1px solid rgba(30, 41, 59, 0.8);
-    border-radius: 20px;
-    background: rgba(85, 98, 121, 0.95);
-    padding: 18px;
-    min-height: 520px;
+.panel-inner {
+    border: 1px solid rgba(30, 41, 59, 0.8) !important;
+    border-radius: 20px !important;
+    background: rgba(85, 98, 121, 0.95) !important;
+    padding: 18px !important;
+    min-height: 520px !important;
+    box-shadow: none !important;
 }
 
-/* fixed title height */
-.panel-title {
+.panel-heading {
     height: 64px;
     display: flex;
     align-items: flex-start;
-    justify-content: flex-start;
     font-size: 20px;
     font-weight: 800;
     color: #f8fafc;
-    line-height: 1.25;
     margin-bottom: 12px;
 }
 
-/* One single content area under title */
-.stage-wrap {
-    height: 390px;
-    display: flex;
-    align-items: stretch;
-    justify-content: stretch;
+/* This row is the actual one-box content area */
+.content-slot {
+    min-height: 390px !important;
 }
 
-/* ===== Upload box: single main box ===== */
-#upload_box {
-    width: 100%;
-    height: 100% !important;
+/* Upload side */
+.upload-zone {
     min-height: 390px !important;
+}
+
+.upload-zone > .wrap {
+    min-height: 390px !important;
+}
+
+.upload-zone .file-upload,
+.upload-zone .file-upload-secondary {
+    min-height: 390px !important;
+}
+
+.upload-zone {
     border: 2px dashed rgba(255,255,255,0.88) !important;
     border-radius: 0 !important;
     background: #23324a !important;
 }
 
-#upload_box > .wrap {
+/* Report side */
+.report-zone {
     min-height: 390px !important;
-}
-
-/* ===== Report box: single main box ===== */
-#report_box {
-    width: 100%;
-    height: 100%;
-    min-height: 390px !important;
-    border: none !important;
     border-radius: 22px !important;
     background: #061225 !important;
     padding: 18px 20px !important;
@@ -164,64 +152,52 @@ body {
     box-shadow: 0 8px 22px rgba(0,0,0,0.18);
 }
 
-/* Markdown text */
-#report_box .prose,
-#report_box .markdown {
+.report-zone,
+.report-zone > div {
+    border: none !important;
+}
+
+.report-zone .prose,
+.report-zone .markdown {
     color: #f8fafc !important;
     line-height: 1.8 !important;
     font-size: 15px !important;
     max-width: 100% !important;
 }
 
-#report_box h1,
-#report_box h2,
-#report_box h3,
-#report_box h4,
-#report_box p,
-#report_box li,
-#report_box strong {
+.report-zone h1,
+.report-zone h2,
+.report-zone h3,
+.report-zone h4,
+.report-zone p,
+.report-zone li,
+.report-zone strong {
     color: #f8fafc !important;
 }
 
-.report-clean {
-    border: none !important;
-    background: transparent !important;
-    padding: 0 !important;
-    margin: 0 !important;
-}
-
-/* ===== Mobile ===== */
+/* Mobile */
 @media (max-width: 980px) {
     .hero-title {
         font-size: 30px;
     }
 
-    #main-panels {
-        flex-wrap: wrap !important;
-    }
-
-    #main-panels > .gr-column {
-        min-width: 100% !important;
-    }
-
-    .panel-box,
-    .inner-shell {
+    .panel-outer,
+    .panel-inner {
         min-height: auto !important;
     }
 
-    .panel-title {
+    .panel-heading {
         height: auto;
         min-height: 48px;
     }
 
-    .stage-wrap {
-        height: 320px;
-    }
-
-    #upload_box,
-    #upload_box > .wrap,
-    #report_box {
-        min-height: 320px !important;
+    .content-slot,
+    .upload-zone,
+    .upload-zone > .wrap,
+    .upload-zone .file-upload,
+    .upload-zone .file-upload-secondary,
+    .report-zone {
+        min-height: 300px !important;
     }
 }
 """
@@ -248,45 +224,28 @@ with gr.Blocks(
 
     with gr.Row(elem_id="main-panels", equal_height=True):
         with gr.Column(scale=1, min_width=0):
-            with gr.Group(elem_classes=["panel-box"]):
-                gr.HTML("""
-                <div class="inner-shell">
-                    <div class="panel-title">Upload Area</div>
-                    <div class="stage-wrap">
-                """)
-
-                file_input = gr.File(
-                    label="",
-                    file_types=[".pdf"],
-                    type="filepath",
-                    show_label=False,
-                    elem_id="upload_box",
-                )
-
-                gr.HTML("""
-                    </div>
-                </div>
-                """)
+            with gr.Group(elem_classes=["panel-outer"]):
+                with gr.Group(elem_classes=["panel-inner"]):
+                    gr.Markdown("### Upload Area", elem_classes=["panel-heading"])
+                    with gr.Group(elem_classes=["content-slot"]):
+                        file_input = gr.File(
+                            label="",
+                            file_types=[".pdf"],
+                            type="filepath",
+                            show_label=False,
+                            elem_classes=["upload-zone"],
+                        )
 
         with gr.Column(scale=1, min_width=0):
-            with gr.Group(elem_classes=["panel-box"]):
-                gr.HTML("""
-                <div class="inner-shell">
-                    <div class="panel-title">Formal Review Report</div>
-                    <div class="stage-wrap">
-                """)
-
-                report_md = gr.Markdown(
-                    value="Upload a PDF to generate the formal review report.",
-                    show_label=False,
-                    elem_id="report_box",
-                    elem_classes=["report-clean"],
-                )
-
-                gr.HTML("""
-                    </div>
-                </div>
-                """)
+            with gr.Group(elem_classes=["panel-outer"]):
+                with gr.Group(elem_classes=["panel-inner"]):
+                    gr.Markdown("### Formal Review Report", elem_classes=["panel-heading"])
+                    with gr.Group(elem_classes=["content-slot"]):
+                        report_md = gr.Markdown(
+                            value="Upload a PDF to generate the formal review report.",
+                            show_label=False,
+                            elem_classes=["report-zone"],
+                        )
 
     file_input.change(
         fn=auto_run_review,
