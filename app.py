@@ -28,34 +28,22 @@ def extract_report_and_json(result: dict):
 
 def auto_run_review(file_obj):
     if file_obj is None:
-        return (
-            "Upload a PDF to generate the formal review report.",
-            gr.update(value=None, visible=False),
-        )
+        return ""
 
     file_path = Path(file_obj)
     if file_path.suffix.lower() != ".pdf":
         raise gr.Error("Only PDF files are supported.")
 
-    yield (
-        "⏳ **Yangtze AI is analyzing the proposal...**\n\nPlease wait while the formal review report is being generated.",
-        gr.update(value=None, visible=False),
-    )
+    yield "⏳ **Yangtze AI is analyzing the proposal...**"
 
     result = run_review(file_path=file_path, use_ocr=True)
     report_path, _ = extract_report_and_json(result)
 
     report_text = "Report not found."
-    file_update = gr.update(value=None, visible=False)
-
     if report_path and Path(report_path).exists():
         report_text = Path(report_path).read_text(encoding="utf-8", errors="ignore")
-        file_update = gr.update(value=report_path, visible=True)
 
-    yield (
-        report_text,
-        file_update,
-    )
+    yield report_text
 
 
 CSS = """
@@ -93,7 +81,7 @@ body {
     line-height: 1.8;
 }
 
-/* ===== Main 2-column layout ===== */
+/* ===== Main two-column layout ===== */
 #main-panels {
     display: flex !important;
     flex-wrap: nowrap !important;
@@ -106,13 +94,13 @@ body {
     min-width: 0 !important;
 }
 
-/* ===== Symmetric panel ===== */
+/* ===== Symmetric panels ===== */
 .panel-box {
     border: 1px solid #1e293b !important;
     border-radius: 18px !important;
     background: #455165 !important;
     padding: 24px !important;
-    min-height: 560px !important;
+    min-height: 320px !important;
     box-shadow: none !important;
 }
 
@@ -124,7 +112,7 @@ body {
 }
 
 .panel-stage {
-    height: 430px;
+    height: 220px;
     display: flex;
     align-items: stretch;
 }
@@ -132,20 +120,20 @@ body {
 /* ===== Upload box ===== */
 #upload_box {
     width: 100%;
-    min-height: 430px !important;
+    min-height: 220px !important;
     border: 2px dashed rgba(255,255,255,0.88) !important;
     border-radius: 0 !important;
     background: #1f2c40 !important;
 }
 
 #upload_box > .wrap {
-    min-height: 430px !important;
+    min-height: 220px !important;
 }
 
 /* ===== Report box ===== */
 #report_box {
     width: 100%;
-    min-height: 430px !important;
+    min-height: 220px !important;
     border: 2px solid rgba(255,255,255,0.08) !important;
     border-radius: 18px !important;
     background: #081224 !important;
@@ -178,11 +166,6 @@ body {
     margin: 0 !important;
 }
 
-/* ===== Download area ===== */
-.download-bar {
-    margin-top: 18px;
-}
-
 /* ===== Mobile fallback ===== */
 @media (max-width: 900px) {
     #main-panels {
@@ -198,13 +181,13 @@ body {
     }
 
     .panel-stage {
-        height: 320px;
+        height: 220px;
     }
 
     #upload_box,
     #upload_box > .wrap,
     #report_box {
-        min-height: 320px !important;
+        min-height: 220px !important;
     }
 }
 """
@@ -213,7 +196,11 @@ body {
 with gr.Blocks(
     title="Yangtze AI Reviewer",
     css=CSS,
-    theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate", neutral_hue="slate"),
+    theme=gr.themes.Soft(
+        primary_hue="blue",
+        secondary_hue="slate",
+        neutral_hue="slate",
+    ),
 ) as demo:
 
     gr.HTML("""
@@ -247,7 +234,7 @@ with gr.Blocks(
                 gr.HTML('<div class="panel-stage">')
 
                 report_md = gr.Markdown(
-                    value="Upload a PDF to generate the formal review report.",
+                    value="",
                     show_label=False,
                     elem_id="report_box",
                     elem_classes=["report-clean"],
@@ -255,16 +242,10 @@ with gr.Blocks(
 
                 gr.HTML('</div>')
 
-    with gr.Group(elem_classes=["download-bar"]):
-        report_file = gr.File(
-            label="Download Report (.md)",
-            visible=False
-        )
-
     file_input.change(
         fn=auto_run_review,
         inputs=[file_input],
-        outputs=[report_md, report_file],
+        outputs=report_md,
     )
 
 if __name__ == "__main__":
