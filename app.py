@@ -107,6 +107,18 @@ body {
     box-shadow: none !important;
 }
 
+.panel-outer,
+.panel-inner,
+.content-slot {
+    overflow: hidden !important;
+}
+
+.panel-outer > div,
+.panel-inner > div,
+.content-slot > div {
+    overflow: hidden !important;
+}
+
 .panel-heading {
     height: 64px;
     display: flex;
@@ -140,6 +152,7 @@ body {
     border: 2px dashed rgba(255,255,255,0.88) !important;
     border-radius: 0 !important;
     background: #23324a !important;
+    overflow: hidden !important;
 }
 
 /* Report side */
@@ -150,6 +163,11 @@ body {
     padding: 18px 20px !important;
     overflow-y: auto !important;
     box-shadow: 0 8px 22px rgba(0,0,0,0.18);
+}
+
+.upload-zone,
+.report-zone {
+    overflow: hidden !important;
 }
 
 .report-zone,
