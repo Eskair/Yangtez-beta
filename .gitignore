@@ -1,0 +1,12 @@
+# 忽略数据和生成文件
+src/data/
+*.pdf
+*.png
+*.jpg
+
+# Python
+__pycache__/
+*.pyc
+
+# 临时报告
+report_*.md

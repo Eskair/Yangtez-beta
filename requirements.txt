@@ -1,0 +1,30 @@
+pdfplumber
+langchain
+langchain-community
+langchain-huggingface
+sentence-transformers
+chromadb
+numpy
+pandas
+tqdm
+
+pdf2image
+pdfplumber
+pytesseract
+Pillow
+python-docx
+
+python-dotenv
+openai
+requests
+beautifulsoup4
+lxml
+pydantic
+
+# optional stronger multimodal/layout/table stack
+transformers
+torch
+accelerate
+# paddleocr
+torchvision
+timm
