@@ -362,6 +362,50 @@ def _extract_pdf_text_page(pdf_path: Path, page_index: int) -> str:
     return ""
 
 
+def scramble_score(text: str) -> float:
+    """
+    Heuristic 0..1: higher means text likely has wrong reading order / column merge noise
+    (e.g. double-column PDF read as one stream).
+    """
+    if not text or len(text) < 50:
+        return 0.0
+    parts = re.split(r"[\s\u3000]+", text.strip())
+    cjk_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
+    if cjk_chars < 12:
+        return 0.0
+    single_cjk_tokens = sum(1 for p in parts if len(p) == 1 and "\u4e00" <= p <= "\u9fff")
+    return min(1.0, (single_cjk_tokens / max(cjk_chars, 1)) * 5.0)
+
+
+def _extract_pdf_text_two_column(pdf_path: Path, page_index: int) -> str:
+    """Left-then-right column merge for typical two-column proposal slides."""
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if page_index >= len(pdf.pages):
+                return ""
+            page = pdf.pages[page_index]
+            w, h = float(page.width), float(page.height)
+            mid = w * 0.5
+            left = page.crop((0, 0, max(mid - 2, 1), h))
+            right = page.crop((min(mid + 2, w - 1), 0, w, h))
+            lt = (left.extract_text() or "").strip()
+            rt = (right.extract_text() or "").strip()
+            merged = f"{lt}\n\n{rt}".strip()
+            return normalize_ocr_text(merged)
+    except Exception as exc:
+        logger.warning("two-column pdf extract failed: %s", exc)
+    return ""
+
+
+def best_pdf_text_for_page(pdf_path: Path, page_index: int) -> str:
+    plain = _extract_pdf_text_page(pdf_path, page_index)
+    if scramble_score(plain) > 0.22:
+        col = _extract_pdf_text_two_column(pdf_path, page_index)
+        if len(col) > 80 and scramble_score(col) + 0.06 < scramble_score(plain):
+            return col
+    return plain
+
+
 def detect_tables_with_pdfplumber(pdf_path: Path, page_index: int) -> List[Dict[str, Any]]:
     tables: List[Dict[str, Any]] = []
     try:
@@ -548,7 +592,7 @@ def build_page_semantic(pdf_path: Path, image_path: Path, page_index: int) -> Pa
     lines = _group_words_into_lines(ocr_words)
     blocks = _merge_lines_to_blocks(lines, page_w=width, page_h=height)
     ordered_blocks = [b for b in recover_reading_order(blocks) if b.block_type != "noise"]
-    pdf_text = _extract_pdf_text_page(pdf_path, page_index)
+    pdf_text = best_pdf_text_for_page(pdf_path, page_index)
     ocr_text = normalize_ocr_text("\n".join(" ".join(w.text for w in line) for line in lines).strip())
 
     tables = detect_tables_with_pdfplumber(pdf_path, page_index)
@@ -579,6 +623,14 @@ def build_page_semantic(pdf_path: Path, image_path: Path, page_index: int) -> Pa
         reconstructed_text = _fallback_reconstructed_text(ordered_blocks, tables)
 
     reconstructed_text = normalize_ocr_text(reconstructed_text)
+
+    # Prefer cleaner PDF stream when OCR/vision still looks like column-scrambled garbage
+    if pdf_text and len(pdf_text) > 100:
+        rs, ps = scramble_score(reconstructed_text), scramble_score(pdf_text)
+        if rs > 0.30 and ps + 0.08 < rs:
+            reconstructed_text = normalize_ocr_text(pdf_text)
+        elif len(reconstructed_text) < 45 and len(pdf_text) > len(reconstructed_text) * 2:
+            reconstructed_text = normalize_ocr_text(pdf_text)
 
     source_notes = []
     if pdf_text:
@@ -637,6 +689,69 @@ def save_document_semantics(doc_semantics: Dict[str, Any], out_dir: Path) -> Dic
         "reconstructed_full_text_path": str(reconstructed_text_path),
         "page_images_dir": str(out_dir / "page_images"),
     }
+
+
+def rebuild_pages_json_from_semantics(doc_semantics: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Build pages.json rows aligned with layout pipeline output so run_review uses
+    the same per-page text as reconstructed_full_text (fixes evidence selection drift).
+    """
+    pages = doc_semantics.get("pages") or []
+    texts: List[str] = []
+    sources: List[str] = []
+    for p in pages:
+        rt = (p.get("reconstructed_text") or "").strip()
+        pdf_t = (p.get("pdf_text") or "").strip()
+        if not rt and not pdf_t:
+            texts.append("")
+            sources.append("empty")
+            continue
+        if not rt:
+            texts.append(pdf_t)
+            sources.append("pdf_text")
+            continue
+        if not pdf_t:
+            texts.append(rt)
+            sources.append("reconstructed")
+            continue
+        sr, sp = scramble_score(rt), scramble_score(pdf_t)
+        if sr > 0.30 and sp + 0.08 < sr:
+            texts.append(pdf_t)
+            sources.append("pdf_text_preferred")
+        elif sp > 0.30 and sr + 0.08 < sp:
+            texts.append(rt)
+            sources.append("reconstructed_preferred")
+        elif len(rt) >= len(pdf_t) * 1.25:
+            texts.append(rt)
+            sources.append("reconstructed")
+        elif len(pdf_t) >= len(rt) * 1.25:
+            texts.append(pdf_t)
+            sources.append("pdf_text")
+        else:
+            texts.append(rt if sr <= sp else pdf_t)
+            sources.append("merged_pick")
+
+    offset = 0
+    out: List[Dict[str, Any]] = []
+    for i, (txt, src) in enumerate(zip(texts, sources)):
+        char_len = len(txt)
+        page_start = offset
+        page_end = offset + char_len
+        row: Dict[str, Any] = {
+            "page_index": i + 1,
+            "source": src,
+            "char_len": char_len,
+            "global_char_start": page_start,
+            "global_char_end": page_end,
+            "text": txt,
+        }
+        if i < len(pages):
+            pt = (pages[i].get("page_type") or "").strip()
+            if pt:
+                row["page_type"] = pt
+        out.append(row)
+        offset = page_end + 2
+    return out
 
 
 def semantic_pages_for_stage1(page_semantics: Dict[str, Any]) -> List[Dict[str, Any]]:

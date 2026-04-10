@@ -17,7 +17,11 @@ import pytesseract
 pytesseract.pytesseract.tesseract_cmd = "tesseract"
 from docx import Document
 
-from .layout_reconstruction import build_document_semantics, save_document_semantics
+from .layout_reconstruction import (
+    build_document_semantics,
+    rebuild_pages_json_from_semantics,
+    save_document_semantics,
+)
 
 MIN_TEXT_CHARS_PER_PAGE = 30
 TESSERACT_LANG = os.getenv("TESS_LANG", "chi_sim+eng")
@@ -170,6 +174,16 @@ def prepare_text(file_path: Path, proposal_id: str, use_ocr: bool = True):
             if reconstructed_full_text:
                 full_text_path.write_text(reconstructed_full_text, encoding="utf-8")
                 print(f"[OK] 已用 reconstructed_full_text 覆盖 full_text.txt，长度 {len(reconstructed_full_text)} 字符")
+            # Keep pages.json aligned with per-page reconstructed/pdf choice (evidence selection)
+            try:
+                pages_data = rebuild_pages_json_from_semantics(doc_sem)
+                pages_json_path.write_text(
+                    json.dumps(pages_data, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                print(f"[OK] 已用 layout 结果同步 pages.json（{len(pages_data)} 页）")
+            except Exception as sync_e:
+                print(f"[WARN] pages.json 同步失败，保留初次提取: {sync_e}")
         except Exception as e:
             print(f"[WARN] 多模态 Stage 0 重建失败，继续使用基础文本: {e}")
 

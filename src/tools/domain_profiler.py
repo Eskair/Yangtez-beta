@@ -7,7 +7,7 @@ import re
 from collections import Counter
 from typing import Any, Dict, List, Sequence, Tuple
 
-from src.prompting.domain_adaptive import sanitize_domain_profile
+from src.prompting.domain_adaptive import sanitize_document_form, sanitize_domain_profile
 
 try:
     from openai import OpenAI  # type: ignore
@@ -33,6 +33,19 @@ def extract_keywords(text: str, max_terms: int = 18) -> List[str]:
     return [t for t, _ in counts.most_common(max_terms)]
 
 
+def _heuristic_document_form(text: str) -> Dict[str, Any]:
+    t = text[:80000]
+    if re.search(r"融资计划|商业计划书|A轮|B轮|路演|股权|估值|BP\b", t, re.I):
+        return {"primary": "business_plan", "confidence": 0.55, "rationale": "financing / BP keywords"}
+    if re.search(r"国家自然科学基金|重点项目|面上项目|青年基金|科学问题属性|研究基础与可行性", t):
+        return {"primary": "grant_proposal", "confidence": 0.55, "rationale": "NSFC-style keywords"}
+    if re.search(r"可行性研究报告|可研报告|投资估算|建设规模|经济评价", t):
+        return {"primary": "feasibility_study", "confidence": 0.5, "rationale": "feasibility-study keywords"}
+    if re.search(r"技术白皮书|技术报告|试验结果|测试报告|附录A", t):
+        return {"primary": "technical_report", "confidence": 0.4, "rationale": "technical-report keywords"}
+    return {"primary": "unknown", "confidence": 0.0, "rationale": ""}
+
+
 def heuristic_domain_profile(full_text: str, pages: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Strictly derive a lightweight domain profile from the CURRENT document only.
@@ -51,6 +64,7 @@ def heuristic_domain_profile(full_text: str, pages: Sequence[Dict[str, Any]]) ->
 
     if not top_keywords:
         return sanitize_domain_profile({
+            "document_form": _heuristic_document_form(full_text),
             "domain": {"primary": "unknown", "secondary": []},
             "evaluation_focus": {
                 "problem": [],
@@ -69,6 +83,7 @@ def heuristic_domain_profile(full_text: str, pages: Sequence[Dict[str, Any]]) ->
     secondary_domains = top_keywords[1:4]
 
     profile = {
+        "document_form": _heuristic_document_form(full_text),
         "domain": {
             "primary": primary_domain,
             "secondary": secondary_domains,
@@ -145,7 +160,12 @@ Return JSON with exactly this structure:
   },
   "methods": ["string"],
   "risks": ["string"],
-  "terminology": ["string"]
+  "terminology": ["string"],
+  "document_form": {
+    "primary": "grant_proposal | feasibility_study | business_plan | technical_report | unknown",
+    "confidence": 0.0,
+    "rationale": "string"
+  }
 }
 """.strip()
 
@@ -171,7 +191,12 @@ def profile_with_optional_llm(full_text: str, pages: Sequence[Dict[str, Any]]) -
         )
 
         raw = response.choices[0].message.content or "{}"
-        data = sanitize_domain_profile(json.loads(raw))
+        parsed = json.loads(raw)
+        data = sanitize_domain_profile(parsed)
+        if data.get("document_form", {}).get("primary") == "unknown":
+            h_form = _heuristic_document_form(full_text)
+            if h_form.get("primary") != "unknown":
+                data = {**data, "document_form": sanitize_document_form(h_form)}
 
         primary = _clean_text(data.get("domain", {}).get("primary", ""))
         terminology = data.get("terminology", []) or []

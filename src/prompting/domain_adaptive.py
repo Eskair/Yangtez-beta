@@ -152,7 +152,15 @@ REVIEW_TASKS: List[ReviewTask] = [
 ]
 
 QUESTION_SEARCH_HINTS = {
-    "team": ["team expertise", "roles and responsibilities", "governance"],
+    "team": [
+        "team expertise",
+        "roles and responsibilities",
+        "governance",
+        "核心团队",
+        "组织架构",
+        "咨询委员会",
+        "成员与职责",
+    ],
     "objectives": ["problem significance", "scope", "outcomes", "evaluation"],
     "strategy": ["methods", "technical approach", "workflow"],
     "innovation": ["novelty", "differentiation", "prior work"],
@@ -191,9 +199,58 @@ Return JSON with this structure:
   },
   "methods": ["string"],
   "risks": ["string"],
-  "terminology": ["string"]
+  "terminology": ["string"],
+  "document_form": {
+    "primary": "grant_proposal | feasibility_study | business_plan | technical_report | unknown",
+    "confidence": 0.0,
+    "rationale": "short text-grounded reason"
+  }
 }
 """.strip()
+
+
+def sanitize_document_form(raw: Any) -> Dict[str, Any]:
+    allowed = {"grant_proposal", "feasibility_study", "business_plan", "technical_report", "unknown"}
+    if not isinstance(raw, dict):
+        return {"primary": "unknown", "confidence": 0.0, "rationale": ""}
+    primary = str(raw.get("primary", "unknown")).strip().lower().replace(" ", "_")
+    if primary not in allowed:
+        primary = "unknown"
+    try:
+        conf = float(raw.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        conf = 0.0
+    conf = max(0.0, min(1.0, conf))
+    rationale = " ".join(str(raw.get("rationale", "")).split())[:240]
+    return {"primary": primary, "confidence": conf, "rationale": rationale}
+
+
+def get_document_form_prompt_suffix(profile: Dict[str, Any]) -> str:
+    """Reviewer-facing instruction block; keep English for current LLM prompts in run_review."""
+    form = sanitize_document_form(profile.get("document_form"))
+    primary = form["primary"]
+    if primary == "business_plan":
+        return (
+            "\n\n[Document form: business / financing plan] "
+            "Weight milestones, commercial traction, unit economics, customers and partnerships, "
+            "and execution governance. Do not apply pure academic-grant criteria alone."
+        )
+    if primary == "grant_proposal":
+        return (
+            "\n\n[Document form: research grant style] "
+            "Weight scientific problem, novelty vs prior work, methodology rigor, and research feasibility."
+        )
+    if primary == "feasibility_study":
+        return (
+            "\n\n[Document form: feasibility / engineering study] "
+            "Weight investment logic, engineering deliverables, schedule, and risk controls."
+        )
+    if primary == "technical_report":
+        return (
+            "\n\n[Document form: technical report / whitepaper] "
+            "Weight technical depth, reproducibility, and validation evidence."
+        )
+    return ""
 
 
 def normalize_list(items: Any, max_items: int = 6) -> List[str]:
@@ -327,6 +384,7 @@ def sanitize_domain_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
         "methods": methods,
         "risks": risks,
         "terminology": terminology,
+        "document_form": sanitize_document_form(profile.get("document_form")),
     }
 
 

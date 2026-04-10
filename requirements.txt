@@ -21,6 +21,9 @@ beautifulsoup4
 lxml
 pydantic
 
+# Gradio web UI (app.py)
+gradio>=6.11.0
+
 # optional stronger multimodal/layout/table stack
 transformers
 torch
