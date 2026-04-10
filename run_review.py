@@ -8,6 +8,12 @@ End-to-end Yangtze review runner.
 Pipeline:
 PDF -> prepared JSON -> domain profile -> metric check -> specialized prompts
 -> review JSON -> markdown report
+
+Environment:
+- REVIEW_OUTPUT_LANG: zh (default) | en — language of the final LLM-written report
+  and related digest/page-boundary/quality-note prompts. Structured task judgments
+  may remain partly Chinese; the model is instructed to write the report in the
+  chosen language.
 """
 
 import argparse
@@ -40,6 +46,14 @@ DATA_DIR = BASE_DIR / "src" / "data"
 RUNS_DIR = DATA_DIR / "runs"
 
 
+def get_review_output_lang() -> str:
+    """zh | en from REVIEW_OUTPUT_LANG (default zh)."""
+    raw = (os.getenv("REVIEW_OUTPUT_LANG", "zh") or "zh").strip().lower()
+    if raw in ("en", "english", "en-us", "en_gb"):
+        return "en"
+    return "zh"
+
+
 @dataclass(frozen=True)
 class EvidenceSnippet:
     page_index: int
@@ -63,25 +77,37 @@ def detect_document_staleness(full_text: str, current_year: int | None = None) -
     years = sorted({int(y) for y in re.findall(r"\b(19\d{2}|20\d{2})\b", full_text)})
     latest = max(years) if years else None
     warning_zh = None
+    warning_en = None
     if latest is not None and (cy - latest) >= 6:
+        gap = cy - latest
         warning_zh = (
-            f"文中出现的年份多在 {latest} 年及更早，距今约 {cy - latest} 年；"
+            f"文中出现的年份多在 {latest} 年及更早，距今约 {gap} 年；"
             "市场、政策与竞争格局可能已变化，结论需结合时效性审慎看待。"
         )
+        warning_en = (
+            f"Most explicit years in the document are {latest} or earlier (~{gap} years old). "
+            "Markets, policy, and competitive context may have changed; interpret conclusions with caution."
+        )
     elif latest is not None and (cy - latest) >= 4:
+        gap = cy - latest
         warning_zh = (
-            f"材料中显著日期距今约 {cy - latest} 年，请关注数据与外部引用是否仍适用。"
+            f"材料中显著日期距今约 {gap} 年，请关注数据与外部引用是否仍适用。"
+        )
+        warning_en = (
+            f"Salient dates in the material are about {gap} years old; check whether data and citations remain applicable."
         )
     return {
         "years_found": years,
         "latest_year": latest,
         "warning_zh": warning_zh,
+        "warning_en": warning_en,
         "reference_year": cy,
     }
 
 
-def build_evidence_digest_for_llm(task_results: Sequence[Dict[str, Any]]) -> str:
+def build_evidence_digest_for_llm(task_results: Sequence[Dict[str, Any]], *, lang: str = "zh") -> str:
     lines: List[str] = []
+    use_en = (lang or "zh").strip().lower().startswith("en")
     for tr in task_results:
         evs = tr.get("evidence") or []
         if not evs:
@@ -90,14 +116,19 @@ def build_evidence_digest_for_llm(task_results: Sequence[Dict[str, Any]]) -> str
         for e in evs[:2]:
             pg = e.get("page_index")
             sn = _short_citation_quote(str(e.get("text", "")), 80)
-            bits.append(f"第{pg}页：{sn}")
+            if use_en:
+                bits.append(f"p. {pg}: {sn}")
+            else:
+                bits.append(f"第{pg}页：{sn}")
         title = tr.get("title", "")
-        lines.append(f"- **{title}**: " + "；".join(bits))
+        sep = "; " if use_en else "；"
+        lines.append(f"- **{title}**: " + sep.join(bits))
     return "\n".join(lines) if lines else ""
 
 
-def format_evidence_page_allowlist(task_results: Sequence[Dict[str, Any]]) -> str:
+def format_evidence_page_allowlist(task_results: Sequence[Dict[str, Any]], *, lang: str = "zh") -> str:
     """供主报告 LLM 使用的页码边界说明，抑制封面页、索引外页码等不真实引用。"""
+    use_en = (lang or "zh").strip().lower().startswith("en")
     pages: set[int] = set()
     for tr in task_results:
         for e in tr.get("evidence") or []:
@@ -106,12 +137,26 @@ def format_evidence_page_allowlist(task_results: Sequence[Dict[str, Any]]) -> st
             except (KeyError, TypeError, ValueError):
                 continue
     if not pages:
+        if use_en:
+            return (
+                "No specific PDF page numbers were locked by this run. In **Issues** and **Revision suggestions**, "
+                "do **not** write “(p. N)”; use a generic pointer such as “see the proposal materials”."
+            )
         return (
             "本轮系统摘录未锁定具体 PDF 页码。「主要问题」「修改建议」中**禁止**书写「（第N页）」类括号；"
             "若需指称材料，使用「见申请材料正文」等泛称即可。"
         )
     ordered = sorted(pages)
-    joined = "、".join(str(p) for p in ordered)
+    joined = ", ".join(str(p) for p in ordered) if use_en else "、".join(str(p) for p in ordered)
+    if use_en:
+        return (
+            f"The following page numbers come from the evidence index above. In **Issues** and **Revision suggestions**, "
+            f"you may only cite these in parentheses as (p. N): {joined}. "
+            "N must be in this set; do **not** invent other page numbers. "
+            "Pages 1–2 are often cover, title, or table of contents; do **not** use them as the sole basis for substantive "
+            "claims about risk management, technical detail, or missing metrics unless that page is in the set and the excerpt clearly supports the claim. "
+            "For document-wide timeliness, omit page parentheses or use “(document-level date pattern)”."
+        )
     return (
         f"下列页码来自上方「证据摘录索引」中的摘录，**仅限**在「主要问题」「修改建议」的括号中使用这些页码之一：{joined}。"
         "括号中的 N **必须**属于该集合；**禁止**编造任何未出现在该集合中的页码。"
@@ -126,6 +171,12 @@ QUALITY_NOTES_SYSTEM = """你是评审材料一致性助手。你只根据给定
 claim_evidence_notes：判断句与摘录若不完全支持、或措辞相对证据过强时的提醒（每条≤90字，最多4条）。
 consistency_flags：时效性、指标完整性、维度间潜在矛盾等待核对提醒（每条≤90字，最多3条）。
 若无问题则对应数组为空。不要重复输入原文。"""
+
+QUALITY_NOTES_SYSTEM_EN = """You are a review consistency assistant. Comment only on the given JSON; do not invent facts.
+Output a single JSON object with keys claim_evidence_notes and consistency_flags (arrays of strings).
+claim_evidence_notes: up to 4 items (each ≤90 characters) where a judgment is not fully supported by excerpts or is overstated.
+consistency_flags: up to 3 items on timeliness, metric completeness, or cross-dimension consistency to double-check.
+Use English only in the array strings. If nothing applies, return empty arrays. Do not repeat the input verbatim."""
 
 
 def _quality_notes_payload(
@@ -161,6 +212,8 @@ def llm_review_quality_notes(
     task_results: Sequence[Dict[str, Any]],
     staleness: Dict[str, Any],
     metric_report: Dict[str, Any],
+    *,
+    output_lang: str = "zh",
 ) -> Dict[str, Any]:
     flag = (os.getenv("YANGTZE_QUALITY_NOTES", "1") or "1").strip().lower()
     if flag in ("0", "false", "no", "off"):
@@ -170,12 +223,14 @@ def llm_review_quality_notes(
         return {}
     payload = _quality_notes_payload(task_results, staleness, metric_report)
     model = (os.getenv("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini").strip()
+    use_en = (output_lang or "zh").strip().lower().startswith("en")
+    sys_msg = QUALITY_NOTES_SYSTEM_EN if use_en else QUALITY_NOTES_SYSTEM
     try:
         client = OpenAI(api_key=api_key)
         resp = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": QUALITY_NOTES_SYSTEM},
+                {"role": "system", "content": sys_msg},
                 {
                     "role": "user",
                     "content": json.dumps(payload, ensure_ascii=False),
@@ -195,14 +250,25 @@ def llm_review_quality_notes(
         return {}
 
 
-def _format_quality_notes_for_prompt(qn: Dict[str, Any]) -> str:
+def _format_quality_notes_for_prompt(qn: Dict[str, Any], *, lang: str = "zh") -> str:
+    use_en = (lang or "zh").strip().lower().startswith("en")
     if not qn:
+        if use_en:
+            return "(Quality self-check not run; rely on the evidence index and structured results.)"
         return "（未运行质量自检；请直接依据证据摘录与结构化结果撰写。）"
     parts: List[str] = []
     for item in qn.get("claim_evidence_notes") or []:
-        parts.append(f"- [判断—证据] {item}")
+        if use_en:
+            parts.append(f"- [claim vs evidence] {item}")
+        else:
+            parts.append(f"- [判断—证据] {item}")
     for item in qn.get("consistency_flags") or []:
-        parts.append(f"- [一致性] {item}")
+        if use_en:
+            parts.append(f"- [consistency] {item}")
+        else:
+            parts.append(f"- [一致性] {item}")
+    if use_en:
+        return "\n".join(parts) if parts else "(No extra consistency flags this run.)"
     return "\n".join(parts) if parts else "（本轮未检出需特别提示项）"
 
 
@@ -620,6 +686,19 @@ def verdict_label_zh(verdict: str) -> str:
     return table.get(v, "建议修改后再审（暂缓资助）")
 
 
+def verdict_label_en(verdict: str) -> str:
+    """English wording aligned with the same verdict codes (for REVIEW_OUTPUT_LANG=en)."""
+    v = (verdict or "").strip()
+    table = {
+        VERDICT_PRIORITY_SUPPORT: "Recommend priority funding",
+        VERDICT_SUPPORT: "Recommend funding",
+        VERDICT_CONDITIONAL: "Recommend revision and re-review (hold / defer)",
+        VERDICT_CONCERN: "Do not recommend funding",
+        _VERDICT_LEGACY_HOLD: "Recommend revision and re-review (hold / defer)",
+    }
+    return table.get(v, "Recommend revision and re-review (hold / defer)")
+
+
 def compute_final_verdict(task_results: Sequence[Dict[str, Any]]) -> Tuple[float, float, str]:
     """
     综合分 = 各任务 score_10（约 1–9.5）算术平均；置信度 = 各任务 confidence 算术平均。
@@ -832,24 +911,129 @@ def llm_generate_review(
     document_form_primary: str = "unknown",
     quality_notes: Dict[str, Any] | None = None,
     task_results: Sequence[Dict[str, Any]] | None = None,
+    output_lang: str | None = None,
 ) -> str:
     client = OpenAI()
     model = (os.getenv("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini").strip()
 
-    st = staleness or {}
-    warn = st.get("warning_zh") or ""
-    digest = evidence_digest.strip() or "（本轮未形成结构化摘录）"
-    warn_block = warn if warn else "（未检测到需特别提示的时效风险）"
+    lang = (output_lang or get_review_output_lang()).strip().lower()
+    lang = "en" if lang.startswith("en") else "zh"
     form_note = document_form_primary or "unknown"
-    vlabel = result.get("verdict_label_zh") or verdict_label_zh(str(result.get("verdict", "")))
-    qn_block = _format_quality_notes_for_prompt(quality_notes or {})
-    page_rule = (
-        format_evidence_page_allowlist(task_results)
-        if task_results is not None
-        else "（未传入任务摘录；请勿编造页码括号。）"
-    )
 
-    prompt = f"""
+    st = staleness or {}
+    if lang == "en":
+        warn = st.get("warning_en") or st.get("warning_zh") or ""
+        digest = evidence_digest.strip() or "(No structured excerpts this run.)"
+        warn_block = warn if warn else "(No special timeliness note detected.)"
+        vcode = str(result.get("verdict", ""))
+        vlabel = verdict_label_en(vcode)
+        qn_block = _format_quality_notes_for_prompt(quality_notes or {}, lang="en")
+        page_rule = (
+            format_evidence_page_allowlist(task_results, lang="en")
+            if task_results is not None
+            else "(Task excerpts not passed; do not invent page parentheses.)"
+        )
+        prompt = f"""
+You are an expert reviewer for research and commercialization proposals. Using ONLY the structured inputs below, write a formal, careful review report.
+
+The structured payload may be partly in Chinese; write the **entire report in English** (proper nouns may remain as in the source).
+
+[Requirements]
+1. Use English for all report sections.
+2. Tone: formal, objective, professional.
+3. Avoid meta wording such as "according to the model/system/algorithm".
+4. No JSON or step-by-step process narration in the output.
+5. Follow the section structure below exactly (headings as shown).
+6. In "## 3. Overall scores", the line "Funding recommendation:" must read **exactly**: **{vlabel}** (system decision). Do not print internal codes PRIORITY_SUPPORT, SUPPORT, CONDITIONAL, CONCERN, HOLD.
+7. "## 8. Final conclusion" must match that same recommendation **verbatim** and use a closing consistent with **{vlabel}** only:
+   - If **{vlabel}** is "Recommend priority funding": stress strength and priority; do not downgrade to mere "recommend funding" or a negative ending.
+   - If **{vlabel}** is "Recommend funding": support funding; do not say defer or do not fund.
+   - If **{vlabel}** is "Recommend revision and re-review (hold / defer)": require revision/supplementation before a funding decision; do **not** say recommend funding or priority funding.
+   - If **{vlabel}** is "Do not recommend funding": clear negative recommendation; do not say recommend funding.
+8. In "## 6. Issues" and "## 7. Revision suggestions": any "(p. N)" must obey the [Page citation boundary] below and align with the evidence index; do not invent N. If no page fits, omit parentheses and use "see the proposal materials" (same wording in both sections for the matching row).
+9. Use quality self-check bullets if helpful; never change the funding recommendation **{vlabel}** because of them.
+10. "## 2. Overall assessment" must match the tone of **{vlabel}** (e.g., for hold/defer, the first paragraph must still state main gaps/uncertainty, not read like an unconditional endorsement).
+11. If the page list in [Page citation boundary] is non-empty, prefer "(p. N)" where an index row clearly supports the point; avoid using only generic pointers for every item. Document-wide timeliness may use "(document-level date pattern)" or no page.
+12. "## 7. Revision suggestions" must align **row-by-row** with "## 6. Issues" (item 1 to 1, etc.); the parenthetical page or generic pointer at the end of each suggestion must **match** the same-numbered issue.
+13. "## 5. Strengths": restrained, verifiable; do not copy hype ("world-leading", "disruptive") unless the evidence index supports it; qualify strong claims ("the materials state…").
+
+[Quality self-check (optional)]
+{qn_block}
+
+[Document form hint]
+{form_note}
+
+[Timeliness — must appear inside "## 2. Overall assessment"]
+Unless the timeliness block below says nothing was detected, summarize it in section 2: first paragraph overall judgment; if needed, a **second paragraph** separated by a blank line (e.g. start with "On timeliness of materials:"). Do not add a separate top-level `##` section for timeliness only.
+{warn_block}
+
+[Evidence excerpt index]
+{digest}
+
+[Page citation boundary]
+{page_rule}
+
+[Required outline]
+
+# Proposal review report
+
+## 1. Basic information
+Proposal name: {proposal_id}
+Field / domain (as given): {domain}
+
+## 2. Overall assessment
+(One or two paragraphs per timeliness rules above.)
+
+## 3. Overall scores
+- Overall score: X / 10 (scale 0–10)
+- Review confidence: X.XX
+- Funding recommendation: {vlabel}
+
+## 4. Dimension scores
+(Table required)
+
+| Dimension | Score (0–1) | Comment |
+|-----------|-------------|---------|
+| Team | {result.get("team", {}).get("score", 0)} | (one sentence) |
+| Objectives | {result.get("objectives", {}).get("score", 0)} | (one sentence) |
+| Technical approach | {result.get("strategy", {}).get("score", 0)} | (one sentence) |
+| Innovation | {result.get("innovation", {}).get("score", 0)} | (one sentence) |
+| Feasibility | {result.get("feasibility", {}).get("score", 0)} | (one sentence) |
+
+## 5. Strengths
+(3–5 bullets; objective tone per rule 13.)
+
+## 6. Issues
+(3–5 specific bullets.)
+
+## 7. Revision suggestions
+(Strict row-wise match to section 6; same parenthetical page or generic pointer per rule 12.)
+
+## 8. Final conclusion
+(2–4 sentences: main basis and main gaps/risks, then close with **{vlabel}** exactly.)
+
+[Structured input]
+overall_score (0–1): {result.get("overall_score")}
+confidence: {result.get("confidence")}
+
+Team: {result.get("team")}
+Objectives: {result.get("objectives")}
+Strategy: {result.get("strategy")}
+Innovation: {result.get("innovation")}
+Feasibility: {result.get("feasibility")}
+"""
+    else:
+        warn = st.get("warning_zh") or ""
+        digest = evidence_digest.strip() or "（本轮未形成结构化摘录）"
+        warn_block = warn if warn else "（未检测到需特别提示的时效风险）"
+        vlabel = result.get("verdict_label_zh") or verdict_label_zh(str(result.get("verdict", "")))
+        qn_block = _format_quality_notes_for_prompt(quality_notes or {}, lang="zh")
+        page_rule = (
+            format_evidence_page_allowlist(task_results, lang="zh")
+            if task_results is not None
+            else "（未传入任务摘录；请勿编造页码括号。）"
+        )
+        prompt = f"""
 你是一位科研项目与产业化材料评审专家，请基于以下结构化评审结果，撰写一份正式、规范、严谨的评审报告。
 
 【严格要求】
@@ -1115,16 +1299,21 @@ def run_review(file_path: Path, proposal_id: str | None = None, use_ocr: bool = 
     dim_scores = aggregate_dimension_scores(task_results)
     overall, confidence, verdict = compute_final_verdict(task_results)
 
-    quality_notes = llm_review_quality_notes(task_results, staleness, metric_report)
+    output_lang = get_review_output_lang()
+    quality_notes = llm_review_quality_notes(
+        task_results, staleness, metric_report, output_lang=output_lang
+    )
 
     review_json = {
         "proposal_id": proposal_id,
         "source_file": str(file_path),
         "profiler_mode": profiler_mode,
+        "review_output_lang": output_lang,
         "overall_score_10": overall,
         "confidence": confidence,
         "verdict": verdict,
         "verdict_label_zh": verdict_label_zh(verdict),
+        "verdict_label_en": verdict_label_en(verdict),
         "dimension_scores": dim_scores,
         "domain_profile": profile,
         "document_form": profile.get("document_form", {}),
@@ -1157,6 +1346,7 @@ def run_review(file_path: Path, proposal_id: str | None = None, use_ocr: bool = 
         "confidence": confidence,
         "verdict": verdict,
         "verdict_label_zh": verdict_label_zh(verdict),
+        "verdict_label_en": verdict_label_en(verdict),
         "team": _dim_bucket("team"),
         "objectives": _dim_bucket("objectives"),
         "strategy": _dim_bucket("strategy"),
@@ -1164,7 +1354,7 @@ def run_review(file_path: Path, proposal_id: str | None = None, use_ocr: bool = 
         "feasibility": _dim_bucket("feasibility"),
     }
     domain = profile.get("domain", {}).get("primary", "Unknown")
-    evidence_digest = build_evidence_digest_for_llm(task_results)
+    evidence_digest = build_evidence_digest_for_llm(task_results, lang=output_lang)
     doc_form = profile.get("document_form", {}) or {}
     final_report = llm_generate_review(
         result,
@@ -1175,6 +1365,7 @@ def run_review(file_path: Path, proposal_id: str | None = None, use_ocr: bool = 
         document_form_primary=str(doc_form.get("primary", "unknown")),
         quality_notes=quality_notes,
         task_results=task_results,
+        output_lang=output_lang,
     )
     print(final_report)
 
@@ -1193,6 +1384,8 @@ def run_review(file_path: Path, proposal_id: str | None = None, use_ocr: bool = 
         "confidence": confidence,
         "verdict": verdict,
         "verdict_label_zh": verdict_label_zh(verdict),
+        "verdict_label_en": verdict_label_en(verdict),
+        "review_output_lang": output_lang,
         "profiler_mode": profiler_mode,
     }
 

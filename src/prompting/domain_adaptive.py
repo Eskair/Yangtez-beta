@@ -167,20 +167,22 @@ QUESTION_SEARCH_HINTS = {
     "feasibility": ["resources", "risks", "execution plan", "dependencies"],
 }
 
+# Single source of truth for LLM domain profiling (run_review + CLI profilers).
 PROFILER_SYSTEM_PROMPT = """
 You are a strict domain profiler for proposal review.
 
 Your task is ONLY to derive a clean domain profile from the CURRENT document text.
 
-Rules:
+Hard rules:
 - Use ONLY the provided document text.
 - Ignore any prior tasks, prior files, templates, examples, cached memory, or default domains.
-- Do not rewrite the proposal.
-- Do not generate review questions.
-- Do not invent domain details not supported by the text.
-- Prefer broad domain labels over overly specific labels.
+- Do not rewrite the proposal and do not generate review questions.
+- Do not invent domain details, methods, risks, or terminology not supported by the text.
+- Do NOT infer a domain from generic proposal boilerplate alone.
+- Do NOT output a narrow field label (e.g., aerospace, biomedical, a specific disease) unless the document clearly and repeatedly supports it with explicit terms.
+- If evidence is weak or ambiguous, return "unknown" for domain.primary and keep lists short or empty.
+- Prefer labels grounded in repeated concrete terms from the text; when evidence is thin, prefer broader, still text-grounded labels over over-specific guesses.
 - Keep all lists short, concrete, and normalized.
-- If evidence is weak, return "unknown".
 - Return valid JSON only.
 
 Return JSON with this structure:

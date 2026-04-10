@@ -7,7 +7,11 @@ import re
 from collections import Counter
 from typing import Any, Dict, List, Sequence, Tuple
 
-from src.prompting.domain_adaptive import sanitize_document_form, sanitize_domain_profile
+from src.prompting.domain_adaptive import (
+    PROFILER_SYSTEM_PROMPT,
+    sanitize_document_form,
+    sanitize_domain_profile,
+)
 
 try:
     from openai import OpenAI  # type: ignore
@@ -128,48 +132,6 @@ def heuristic_domain_profile(full_text: str, pages: Sequence[Dict[str, Any]]) ->
     return sanitize_domain_profile(profile)
 
 
-LLM_PROFILER_SYSTEM = """
-You are a strict domain profiler for proposal review.
-
-Your task is ONLY to derive a clean domain profile from the CURRENT document text.
-
-Hard rules:
-- Use ONLY the provided document text.
-- Ignore any prior tasks, prior files, templates, examples, cached memory, or default domains.
-- Do NOT guess a domain from common proposal patterns.
-- Do NOT mix domains unless the document clearly and repeatedly supports both.
-- If the evidence is weak, return "unknown".
-- Prefer short, concrete domain labels grounded in repeated terms from the text.
-- Do NOT output aerospace, biomedical, or any specific field unless clearly supported by repeated explicit terms.
-- Keep all lists short and text-grounded.
-- Return valid JSON only.
-
-Return JSON with exactly this structure:
-{
-  "domain": {
-    "primary": "string",
-    "secondary": ["string"]
-  },
-  "evaluation_focus": {
-    "problem": ["string"],
-    "objectives": ["string"],
-    "feasibility": ["string"],
-    "innovation": ["string"],
-    "team": ["string"],
-    "outcomes": ["string"]
-  },
-  "methods": ["string"],
-  "risks": ["string"],
-  "terminology": ["string"],
-  "document_form": {
-    "primary": "grant_proposal | feasibility_study | business_plan | technical_report | unknown",
-    "confidence": 0.0,
-    "rationale": "string"
-  }
-}
-""".strip()
-
-
 def profile_with_optional_llm(full_text: str, pages: Sequence[Dict[str, Any]]) -> Tuple[Dict[str, Any], str]:
     heuristic = heuristic_domain_profile(full_text, pages)
 
@@ -182,7 +144,7 @@ def profile_with_optional_llm(full_text: str, pages: Sequence[Dict[str, Any]]) -
         response = client.chat.completions.create(
             model=DEFAULT_MODEL,
             messages=[
-                {"role": "system", "content": LLM_PROFILER_SYSTEM},
+                {"role": "system", "content": PROFILER_SYSTEM_PROMPT},
                 {"role": "user", "content": full_text[:16000]},
             ],
             response_format={"type": "json_object"},
