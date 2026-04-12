@@ -276,6 +276,32 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_\-]+", "_", name).strip("_") or "proposal"
 
 
+def _dedupe_duplicate_revision_section(report: str, *, output_lang: str) -> str:
+    """
+    Some LLM runs repeat \"## 七、修改建议\" / \"## 7. Revision suggestions\" and leak
+    text from the final section; drop duplicate blocks, keeping the first section 7
+    and the first \"## 八\" / \"## 8\" that follows the removed span.
+    """
+    use_en = (output_lang or "zh").strip().lower().startswith("en")
+    h7 = "## 7. Revision suggestions" if use_en else "## 七、修改建议"
+    h8 = "## 8. Final conclusion" if use_en else "## 八、最终结论"
+    text = report or ""
+    while True:
+        first = text.find(h7)
+        if first == -1:
+            break
+        second = text.find(h7, first + len(h7))
+        if second == -1:
+            break
+        tail = text.find(h8, second)
+        if tail != -1:
+            text = text[:second] + text[tail:]
+            continue
+        text = text[:second].rstrip()
+        break
+    return text
+
+
 def load_pages(proposal_id: str) -> List[Dict[str, Any]]:
     path = DATA_DIR / "prepared" / proposal_id / "pages.json"
     return json.loads(path.read_text(encoding="utf-8"))
@@ -956,6 +982,7 @@ The structured payload may be partly in Chinese; write the **entire report in En
 11. If the page list in [Page citation boundary] is non-empty, prefer "(p. N)" where an index row clearly supports the point; avoid using only generic pointers for every item. Document-wide timeliness may use "(document-level date pattern)" or no page.
 12. "## 7. Revision suggestions" must align **row-by-row** with "## 6. Issues" (item 1 to 1, etc.); the parenthetical page or generic pointer at the end of each suggestion must **match** the same-numbered issue.
 13. "## 5. Strengths": restrained, verifiable; do not copy hype ("world-leading", "disruptive") unless the evidence index supports it; qualify strong claims ("the materials state…").
+14. Each `##` section heading must appear **once** in the final report: do **not** repeat "## 7. Revision suggestions" or "## 8. Final conclusion"; after section 7 go directly to section 8.
 
 [Quality self-check (optional)]
 {qn_block}
@@ -1055,6 +1082,7 @@ Feasibility: {result.get("feasibility")}
 12. 若【页码引用边界】已列出**非空**允许页码，则「主要问题」「修改建议」中凡能与「证据摘录索引」某一条目**直接对应**的，**应**在句末写「（第N页）」（N 在允许集合内）；**避免**所有条目一律只用「见申请材料相关章节」等泛称。确无对应摘录的条目可保留泛称；**全文日期/时效性**类可写「（材料全文日期特征）」或不写页码。
 13. 「七、修改建议」与「六、主要问题」须**同序号一一对应**（第1条对第1条，依此类推）。**每条修改建议**句末的括号指称须与**同序号**那条「主要问题」**保持一致**：若该问题使用「（第N页）」或「（见申请材料相关章节）」等，对应建议句末**必须**沿用**相同**页码或相同泛称，**禁止**同序号下「有问题无页码、建议又不写页码」或「问题与建议页码不一致」。
 14. 「五、主要优点」须保持**评审人**的克制与可核对性：**禁止**照搬申报书中的营销口号或未经验证的夸张表述（如「行业领先者」「颠覆性」「国际领先」等），除非「证据摘录索引」能直接支撑。涉及院士、头衔、荣誉、团队规模等**强断言**时，宜用「申报材料显示…」「材料中列有…」等限定表述，避免写成已核实的事实判断。
+15. 全文每个 `##` 章节标题**只出现一次**：**禁止**重复输出「## 七、修改建议」或「## 八、最终结论」；写完「七」后须直接接「## 八、最终结论」，不得在「八」之前再插入另一组「六」「七」或重复「七」。
 
 【质量自检提示（系统生成，供你写作时斟酌）】
 {qn_block}
@@ -1367,6 +1395,7 @@ def run_review(file_path: Path, proposal_id: str | None = None, use_ocr: bool = 
         task_results=task_results,
         output_lang=output_lang,
     )
+    final_report = _dedupe_duplicate_revision_section(final_report, output_lang=output_lang)
     print(final_report)
 
     report_path = run_dir / f"{proposal_id}_review_report.md"

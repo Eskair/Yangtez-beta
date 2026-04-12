@@ -5,9 +5,17 @@ from __future__ import annotations
 
 import html
 import traceback
+import warnings
 from pathlib import Path
 
 import gradio as gr
+
+# Spaces may call launch() without css/theme; Gradio 6 falls back to Blocks' deprecated fields.
+warnings.filterwarnings(
+    "ignore",
+    message=r"The parameters have been moved from the Blocks constructor to the launch\(\) method in Gradio 6\.0: theme, css\..*",
+    category=UserWarning,
+)
 
 from run_review import run_review
 
@@ -297,8 +305,9 @@ body {
     font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
 }
 
-/* ===== Hero ===== */
-.hero {
+/* ===== Hero (id + !important: Gradio/HF theme can override plain .class colors) ===== */
+.hero,
+#yangtze-hero.hero {
     border: 1px solid rgba(148, 163, 184, 0.12);
     border-radius: 16px;
     padding: 28px 32px 26px;
@@ -306,29 +315,33 @@ body {
     backdrop-filter: blur(8px);
     margin-bottom: 24px;
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+    text-align: left !important;
 }
 
-.hero-kicker {
+.hero-kicker,
+#yangtze-hero.hero .hero-kicker {
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #38bdf8;
+    color: #38bdf8 !important;
     margin-bottom: 10px;
 }
 
-.hero-title {
+.hero-title,
+#yangtze-hero.hero .hero-title {
     font-size: clamp(28px, 4vw, 34px);
     font-weight: 700;
-    color: #f1f5f9;
+    color: #f1f5f9 !important;
     margin: 0 0 12px 0;
     letter-spacing: -0.02em;
     line-height: 1.15;
 }
 
-.hero-sub {
+.hero-sub,
+#yangtze-hero.hero .hero-sub {
     font-size: 15px;
-    color: #94a3b8;
+    color: #94a3b8 !important;
     line-height: 1.65;
     max-width: 52ch;
     margin: 0;
@@ -621,10 +634,18 @@ body {
 """
 
 
-with gr.Blocks(title="Yangtze AI Reviewer") as demo:
+# Theme + css on Blocks so Hugging Face Spaces still pick them up if launch() is called
+# without css/theme (Gradio 6 falls back to Blocks' deprecated theme/css in that case).
+_APP_THEME = gr.themes.Soft(
+    primary_hue="blue",
+    secondary_hue="slate",
+    neutral_hue="slate",
+)
+
+with gr.Blocks(title="Yangtze AI Reviewer", theme=_APP_THEME, css=CSS) as demo:
 
     gr.HTML("""
-    <div class="hero">
+    <div id="yangtze-hero" class="hero">
         <div class="hero-kicker">Proposal intelligence</div>
         <div class="hero-title">Yangtze AI Reviewer</div>
         <p class="hero-sub">
@@ -697,10 +718,6 @@ with gr.Blocks(title="Yangtze AI Reviewer") as demo:
 if __name__ == "__main__":
     demo.launch(
         css=CSS,
-        theme=gr.themes.Soft(
-            primary_hue="blue",
-            secondary_hue="slate",
-            neutral_hue="slate",
-        ),
+        theme=_APP_THEME,
         footer_links=[],
     )

@@ -31,6 +31,10 @@ import pdfplumber
 import pytesseract
 from pytesseract import Output
 
+from .tesseract_configure import apply_pytesseract_cmd
+
+apply_pytesseract_cmd()
+
 try:
     from openai import OpenAI  # type: ignore
 except Exception:  # pragma: no cover
@@ -44,6 +48,10 @@ ENABLE_VISION_LLM = os.getenv("ENABLE_VISION_LLM", "1").strip().lower() not in {
 ENABLE_TABLE_MODEL = os.getenv("ENABLE_TABLE_MODEL", "1").strip().lower() not in {"0", "false", "no"}
 ENABLE_LAYOUT_MODEL = os.getenv("ENABLE_LAYOUT_MODEL", "1").strip().lower() not in {"0", "false", "no"}
 OCR_MIN_CONF = int(os.getenv("OCR_MIN_CONF", "35"))
+
+# Table Transformer: load once per process; skip after first hard failure (e.g. missing timm).
+_TT_PROC_MODEL: Optional[Tuple[Any, Any]] = None
+_TT_SKIP_REASON: Optional[str] = None
 
 
 @dataclass
@@ -437,18 +445,49 @@ def detect_tables_with_pdfplumber(pdf_path: Path, page_index: int) -> List[Dict[
 
 
 def detect_tables_with_transformer(image_path: Path) -> List[Dict[str, Any]]:
+    global _TT_PROC_MODEL, _TT_SKIP_REASON
     if not ENABLE_TABLE_MODEL:
         return []
+    if _TT_SKIP_REASON is not None:
+        return []
+
+    # TableTransformer loads timm inside `from_pretrained`; fail early to avoid
+    # noisy stack traces on every page when timm is missing from this interpreter.
+    try:
+        import timm  # type: ignore[import-not-found]  # noqa: F401
+    except ImportError:
+        _TT_SKIP_REASON = "timm not importable"
+        logger.info(
+            "Layout: Table Transformer skipped (optional `timm` not in this Python). "
+            "Tables still use pdfplumber. To enable: `python -m pip install timm` in this env."
+        )
+        return []
+
     try:
         import torch  # type: ignore
         from transformers import AutoImageProcessor, TableTransformerForObjectDetection  # type: ignore
-    except Exception:
+    except Exception as exc:
+        _TT_SKIP_REASON = f"import: {exc}"
+        logger.warning("Table Transformer disabled (import error): %s", exc)
         return []
 
     model_name = os.getenv("TABLE_TRANSFORMER_MODEL", "microsoft/table-transformer-detection")
+
+    if _TT_PROC_MODEL is None:
+        try:
+            processor = AutoImageProcessor.from_pretrained(model_name)
+            model = TableTransformerForObjectDetection.from_pretrained(model_name)
+            _TT_PROC_MODEL = (processor, model)
+        except Exception as exc:
+            _TT_SKIP_REASON = str(exc)
+            logger.warning(
+                "Table Transformer disabled for this session (install `timm` if missing): %s",
+                exc,
+            )
+            return []
+
+    processor, model = _TT_PROC_MODEL
     try:
-        processor = AutoImageProcessor.from_pretrained(model_name)
-        model = TableTransformerForObjectDetection.from_pretrained(model_name)
         image = Image.open(image_path).convert("RGB")
         inputs = processor(images=image, return_tensors="pt")
         outputs = model(**inputs)
@@ -467,7 +506,7 @@ def detect_tables_with_transformer(image_path: Path) -> List[Dict[str, Any]]:
             })
         return tables
     except Exception as exc:
-        logger.warning("Table Transformer failed: %s", exc)
+        logger.warning("Table Transformer inference failed on %s: %s", image_path.name, exc)
         return []
 
 

@@ -24,7 +24,9 @@ pydantic
 # Gradio web UI (app.py)
 gradio>=6.11.0
 
-# optional stronger multimodal/layout/table stack
+# optional stronger multimodal/layout/table stack (Stage 0 layout)
+# timm: required for microsoft/table-transformer-* when ENABLE_TABLE_MODEL=1 (default).
+# If timm is missing, Stage 0 still runs; table boxes fall back to pdfplumber only.
 transformers
 torch
 accelerate

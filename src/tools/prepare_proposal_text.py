@@ -14,7 +14,11 @@ import pdfplumber
 from pdf2image import convert_from_path
 from PIL import Image
 import pytesseract
-pytesseract.pytesseract.tesseract_cmd = "tesseract"
+
+from .tesseract_configure import apply_pytesseract_cmd
+
+apply_pytesseract_cmd()
+
 from docx import Document
 
 from .layout_reconstruction import (
