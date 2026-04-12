@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import re
+import time
 from collections import defaultdict
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -37,8 +38,10 @@ apply_pytesseract_cmd()
 
 try:
     from openai import OpenAI  # type: ignore
+    from openai import RateLimitError as _OpenAIRateLimitError  # type: ignore
 except Exception:  # pragma: no cover
     OpenAI = None
+    _OpenAIRateLimitError = None  # type: ignore[misc, assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -497,11 +500,12 @@ def detect_tables_with_transformer(image_path: Path) -> List[Dict[str, Any]]:
         for idx, (score, label, box) in enumerate(zip(results["scores"], results["labels"], results["boxes"])):
             x0, y0, x1, y1 = [int(v) for v in box.tolist()]
             label_name = model.config.id2label.get(int(label), str(label))
+            sc = score.detach() if hasattr(score, "detach") else score
             tables.append({
                 "table_id": f"tt_{idx+1}",
                 "source": model_name,
                 "label": label_name,
-                "score": float(score),
+                "score": float(sc),
                 "bbox": [x0, y0, x1, y1],
             })
         return tables
@@ -573,6 +577,13 @@ def _image_to_data_url(image_path: Path) -> str:
     return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
 
 
+def _is_openai_rate_limit(exc: BaseException) -> bool:
+    if _OpenAIRateLimitError is not None and isinstance(exc, _OpenAIRateLimitError):
+        return True
+    s = str(exc).lower()
+    return "429" in str(exc) or "rate_limit" in s or "rate limit" in s
+
+
 def vision_llm_enrich_page(image_path: Path, page_payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not ENABLE_VISION_LLM:
         return None
@@ -601,28 +612,50 @@ def vision_llm_enrich_page(image_path: Path, page_payload: Dict[str, Any]) -> Op
         '"regions":[{"role":"title/text/table/chart/label","text":"..."}],'
         '"reconstructed_text":"..."}'
     )
-    try:
-        response = client.chat.completions.create(
-            model=VISION_MODEL,
-            temperature=0.0,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "你是严谨的页面结构解析器，只能依据可见内容回答。"},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt + "\n\nOCR/布局候选：\n" + json.dumps(page_payload, ensure_ascii=False)[:12000]},
-                        {"type": "image_url", "image_url": {"url": _image_to_data_url(image_path)}},
-                    ],
-                },
-            ],
-            max_tokens=1800,
-        )
-        raw = response.choices[0].message.content or "{}"
-        return json.loads(raw)
-    except Exception as exc:
-        logger.warning("vision LLM enrichment failed on %s: %s", image_path, exc)
-        return None
+    max_retries = max(1, int(os.getenv("VISION_LLM_MAX_RETRIES", "8")))
+    base_wait = float(os.getenv("VISION_LLM_RETRY_BASE_SEC", "2.0"))
+    page_gap = float(os.getenv("VISION_LLM_PAGE_GAP_SEC", "0.35"))
+    last_exc: Optional[BaseException] = None
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=VISION_MODEL,
+                temperature=0.0,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": "你是严谨的页面结构解析器，只能依据可见内容回答。"},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt + "\n\nOCR/布局候选：\n" + json.dumps(page_payload, ensure_ascii=False)[:12000]},
+                            {"type": "image_url", "image_url": {"url": _image_to_data_url(image_path)}},
+                        ],
+                    },
+                ],
+                max_tokens=1800,
+            )
+            raw = response.choices[0].message.content or "{}"
+            out = json.loads(raw)
+            if page_gap > 0:
+                time.sleep(page_gap)
+            return out
+        except Exception as exc:
+            last_exc = exc
+            if _is_openai_rate_limit(exc) and attempt + 1 < max_retries:
+                wait = base_wait * (1.55**attempt)
+                logger.info(
+                    "Vision LLM rate limited (%s); sleep %.1fs then retry %d/%d",
+                    image_path.name,
+                    wait,
+                    attempt + 1,
+                    max_retries,
+                )
+                time.sleep(wait)
+                continue
+            logger.warning("vision LLM enrichment failed on %s: %s", image_path, exc)
+            return None
+    logger.warning("vision LLM enrichment failed on %s after %d tries: %s", image_path, max_retries, last_exc)
+    return None
 
 
 def build_page_semantic(pdf_path: Path, image_path: Path, page_index: int) -> PageSemantic:

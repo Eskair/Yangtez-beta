@@ -53,7 +53,9 @@ python -m pip install -r requirements.txt
 OPENAI_API_KEY=你的密钥
 ```
 
-可选：`TESSERACT_CMD`（Tesseract 未加入系统 PATH 时，指向 `tesseract.exe` 的完整路径）、`REVIEW_OUTPUT_LANG`（`zh` / `en`）等。
+可选：`TESSERACT_CMD`（Tesseract 未加入系统 PATH 时，指向 `tesseract.exe` 的完整路径）、`REVIEW_OUTPUT_LANG`（`zh` / `en`）、`HF_TOKEN`（从 Hugging Face Hub 拉模型时提高限额）等。
+
+若 OpenAI 出现 **429 / TPM 限流**：Stage 0 的 Vision 页与质量自检会自动退避重试。也可加大间隔，例如在 `.env` 中设置 `VISION_LLM_PAGE_GAP_SEC=0.6`、`VISION_LLM_MAX_RETRIES=12`；或暂时关闭 Vision：`ENABLE_VISION_LLM=0`（仍保留 OCR / pdfplumber / Table Transformer 路径）。
 
 ### 5. 启动应用
 

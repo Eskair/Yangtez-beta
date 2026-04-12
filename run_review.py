@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import re
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -225,29 +226,46 @@ def llm_review_quality_notes(
     model = (os.getenv("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini").strip()
     use_en = (output_lang or "zh").strip().lower().startswith("en")
     sys_msg = QUALITY_NOTES_SYSTEM_EN if use_en else QUALITY_NOTES_SYSTEM
-    try:
-        client = OpenAI(api_key=api_key)
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": sys_msg},
-                {
-                    "role": "user",
-                    "content": json.dumps(payload, ensure_ascii=False),
-                },
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.15,
-            max_tokens=500,
-        )
-        raw = (resp.choices[0].message.content or "").strip()
-        data = json.loads(raw) if raw else {}
-        notes = [str(x).strip() for x in (data.get("claim_evidence_notes") or []) if str(x).strip()][:4]
-        flags = [str(x).strip() for x in (data.get("consistency_flags") or []) if str(x).strip()][:3]
-        return {"claim_evidence_notes": notes, "consistency_flags": flags}
-    except Exception as exc:
-        print(f"[WARN] 质量自检 LLM 跳过: {exc}")
-        return {}
+
+    def _is_rl(exc: BaseException) -> bool:
+        s = str(exc).lower()
+        return "429" in str(exc) or "rate_limit" in s or "rate limit" in s
+
+    max_qn = max(1, int(os.getenv("QUALITY_NOTES_MAX_RETRIES", "6")))
+    base_w = float(os.getenv("QUALITY_NOTES_RETRY_BASE_SEC", "2.0"))
+    client = OpenAI(api_key=api_key)
+    last_exc: BaseException | None = None
+    for attempt in range(max_qn):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": sys_msg},
+                    {
+                        "role": "user",
+                        "content": json.dumps(payload, ensure_ascii=False),
+                    },
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.15,
+                max_tokens=500,
+            )
+            raw = (resp.choices[0].message.content or "").strip()
+            data = json.loads(raw) if raw else {}
+            notes = [str(x).strip() for x in (data.get("claim_evidence_notes") or []) if str(x).strip()][:4]
+            flags = [str(x).strip() for x in (data.get("consistency_flags") or []) if str(x).strip()][:3]
+            return {"claim_evidence_notes": notes, "consistency_flags": flags}
+        except Exception as exc:
+            last_exc = exc
+            if _is_rl(exc) and attempt + 1 < max_qn:
+                wait = base_w * (1.55**attempt)
+                print(f"[INFO] 质量自检 LLM 限流，{wait:.1f}s 后重试 ({attempt + 1}/{max_qn})")
+                time.sleep(wait)
+                continue
+            print(f"[WARN] 质量自检 LLM 跳过: {exc}")
+            return {}
+    print(f"[WARN] 质量自检 LLM 跳过（重试耗尽）: {last_exc}")
+    return {}
 
 
 def _format_quality_notes_for_prompt(qn: Dict[str, Any], *, lang: str = "zh") -> str:
